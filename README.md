@@ -51,6 +51,10 @@ AlpacaTradingAgent introduces powerful new capabilities specifically designed fo
 
 AlpacaTradingAgent is a multi-agent trading framework that mirrors the dynamics of real-world trading firms. By deploying specialized LLM-powered agents working collaboratively, the platform evaluates market conditions across multiple asset classes and executes informed trading decisions through the Alpaca API.
 
+<p align="center">
+  <img src="schema.png" style="width: 100%; height: auto;">
+</p>
+
 > AlpacaTradingAgent framework is designed for research and educational purposes. Trading performance may vary based on many factors, including the chosen backbone language models, model temperature, trading periods, the quality of data, and other non-deterministic factors. [It is not intended as financial, investment, or trading advice.](https://tauric.ai/disclaimer/)
 
 Our enhanced framework decomposes complex trading tasks into specialized roles while providing real-time market connectivity and execution capabilities.
@@ -171,11 +175,19 @@ The web interface offers comprehensive trading and analysis capabilities:
 - Real-time progress tracking for each symbol
 - Support for mixed portfolios (e.g., `"NVDA, ETH/USD, AAPL"`)
 
+<p align="center">
+  <img src="config_and_chart.png" style="width: 100%; height: auto;">
+</p>
+
 **Live Trading Integration**
 - View current Alpaca positions and recent orders
 - Execute trades directly from the interface
 - Liquidate positions with one-click functionality
 - Real-time portfolio value tracking
+
+<p align="center">
+  <img src="portfolio.png" style="width: 100%; height: auto;">
+</p>
 
 **Interactive Charts & Data**
 - Live price charts powered by Alpaca API
@@ -187,6 +199,10 @@ The web interface offers comprehensive trading and analysis capabilities:
 - Chat-style conversation view for agent debates
 - Progress table showing analysis status for each symbol
 - Downloadable reports and trade recommendations
+
+<p align="center">
+  <img src="reports.png" style="width: 100%; height: auto;">
+</p>
 
 **Automated Trading Controls**
 - Schedule recurring analysis during market hours
