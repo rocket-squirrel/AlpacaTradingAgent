@@ -9,7 +9,7 @@ def create_header():
     """Create the header component for the web UI."""
     return dbc.Card(
         dbc.CardBody([
-            html.H1("TradingAgents 📊 - Multi-Agents LLM Financial Trading Framework", 
+            html.H1("AlpacaTradingAgent 📊 - Multi-Agents LLM Financial Trading Framework", 
                     className="text-center mb-4")
         ]),
         className="mb-4"
