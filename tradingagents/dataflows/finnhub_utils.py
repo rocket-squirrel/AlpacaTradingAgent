@@ -1,5 +1,17 @@
 import json
 import os
+import finnhub
+from .config import get_finnhub_api_key
+
+
+def get_finnhub_client():
+    """
+    Get a finnhub client using the API key from environment variables or config.
+    """
+    api_key = get_finnhub_api_key()
+    if not api_key:
+        raise ValueError("Finnhub API key not found. Please set FINNHUB_API_KEY environment variable or in .env file.")
+    return finnhub.Client(api_key=api_key)
 
 
 def get_data_in_range(ticker, start_date, end_date, data_type, data_dir, period=None):

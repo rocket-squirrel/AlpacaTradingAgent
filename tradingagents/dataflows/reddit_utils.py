@@ -3,50 +3,62 @@ import time
 import json
 from datetime import datetime, timedelta
 from contextlib import contextmanager
-from typing import Annotated
+from typing import Annotated, List
 import os
 import re
+from .alpaca_utils import AlpacaUtils
 
-ticker_to_company = {
-    "AAPL": "Apple",
-    "MSFT": "Microsoft",
-    "GOOGL": "Google",
-    "AMZN": "Amazon",
-    "TSLA": "Tesla",
-    "NVDA": "Nvidia",
-    "TSM": "Taiwan Semiconductor Manufacturing Company OR TSMC",
-    "JPM": "JPMorgan Chase OR JP Morgan",
-    "JNJ": "Johnson & Johnson OR JNJ",
-    "V": "Visa",
-    "WMT": "Walmart",
-    "META": "Meta OR Facebook",
-    "AMD": "AMD",
-    "INTC": "Intel",
-    "QCOM": "Qualcomm",
-    "BABA": "Alibaba",
-    "ADBE": "Adobe",
-    "NFLX": "Netflix",
-    "CRM": "Salesforce",
-    "PYPL": "PayPal",
-    "PLTR": "Palantir",
-    "MU": "Micron",
-    "SQ": "Block OR Square",
-    "ZM": "Zoom",
-    "CSCO": "Cisco",
-    "SHOP": "Shopify",
-    "ORCL": "Oracle",
-    "X": "Twitter OR X",
-    "SPOT": "Spotify",
-    "AVGO": "Broadcom",
-    "ASML": "ASML ",
-    "TWLO": "Twilio",
-    "SNAP": "Snap Inc.",
-    "TEAM": "Atlassian",
-    "SQSP": "Squarespace",
-    "UBER": "Uber",
-    "ROKU": "Roku",
-    "PINS": "Pinterest",
-}
+
+def get_company_name(ticker: str) -> str:
+    """
+    Get company name from ticker symbol using Alpaca API.
+    The fallback logic is handled in AlpacaUtils.
+    
+    Args:
+        ticker: Ticker symbol
+    
+    Returns:
+        Company name or the original ticker if not found
+    """
+
+    return AlpacaUtils.get_company_name(ticker)
+
+
+def get_search_terms(ticker: str) -> List[str]:
+    """
+    Generate a list of search terms for a company based on ticker symbol
+    
+    Args:
+        ticker: Ticker symbol
+    
+    Returns:
+        List of search terms including company name, ticker, and common variations
+    """
+    search_terms = [ticker]  # Always include the ticker symbol itself
+    
+    # Get company name from Alpaca
+    company_name = get_company_name(ticker)
+    
+    if company_name == ticker:
+        # If we couldn't get a company name, just return the ticker
+        return search_terms
+    
+    # Handle company names with "Common Stock", "Class A", etc.
+    if isinstance(company_name, str):
+        # Add the full company name
+        search_terms.append(company_name)
+        
+        # Split by "Common Stock", "Class A", etc.
+        name_parts = re.split(r'\s+(?:Common Stock|Class [A-Z]|Inc\.?|Corp\.?|Corporation|Ltd\.?|Limited|LLC)', company_name)
+        if name_parts and name_parts[0].strip():
+            search_terms.append(name_parts[0].strip())
+        
+        # If company name has OR, split into separate terms
+        if " OR " in company_name:
+            or_terms = company_name.split(" OR ")
+            search_terms.extend([term.strip() for term in or_terms])
+    
+    return search_terms
 
 
 def fetch_top_from_category(
@@ -98,21 +110,20 @@ def fetch_top_from_category(
 
                 # if is company_news, check that the title or the content has the company's name (query) mentioned
                 if "company" in category and query:
-                    search_terms = []
-                    if "OR" in ticker_to_company[query]:
-                        search_terms = ticker_to_company[query].split(" OR ")
-                    else:
-                        search_terms = [ticker_to_company[query]]
-
-                    search_terms.append(query)
+                    # Get search terms including company name and ticker
+                    search_terms = get_search_terms(query)
 
                     found = False
                     for term in search_terms:
-                        if re.search(
-                            term, parsed_line["title"], re.IGNORECASE
-                        ) or re.search(term, parsed_line["selftext"], re.IGNORECASE):
-                            found = True
-                            break
+                        # Only search if we have a valid term
+                        if term and isinstance(term, str):
+                            if re.search(
+                                re.escape(term), parsed_line["title"], re.IGNORECASE
+                            ) or re.search(
+                                re.escape(term), parsed_line["selftext"], re.IGNORECASE
+                            ):
+                                found = True
+                                break
 
                     if not found:
                         continue

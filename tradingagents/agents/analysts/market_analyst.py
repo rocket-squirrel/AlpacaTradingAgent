@@ -1,4 +1,5 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import AIMessage, ToolMessage
 import time
 import json
 
@@ -10,51 +11,85 @@ def create_market_analyst(llm, toolkit):
         ticker = state["company_of_interest"]
         company_name = state["company_of_interest"]
 
-        if toolkit.config["online_tools"]:
+        is_crypto = "/" in ticker or "USD" in ticker.upper() or "USDT" in ticker.upper()
+
+        if is_crypto:
+            tools = [toolkit.get_coindesk_news]
+        elif toolkit.config["online_tools"]:
             tools = [
-                toolkit.get_YFin_data_online,
+                toolkit.get_alpaca_data,
                 toolkit.get_stockstats_indicators_report_online,
             ]
         else:
             tools = [
-                toolkit.get_YFin_data,
+                toolkit.get_alpaca_data_report,
                 toolkit.get_stockstats_indicators_report,
             ]
 
         system_message = (
-            """You are a trading assistant tasked with analyzing financial markets. Your role is to select the **most relevant indicators** for a given market condition or trading strategy from the following list. The goal is to choose up to **8 indicators** that provide complementary insights without redundancy. Categories and each category's indicators are:
+            """You are an EOD TRADING technical analyst specializing in identifying optimal entry/exit points for overnight positions based on daily market close data. Your role is to select the **most relevant indicators** (up to **8**) for EOD trading setups from the following list, focusing on daily chart patterns and end-of-day signals.
 
-Moving Averages:
-- close_50_sma: 50 SMA: A medium-term trend indicator. Usage: Identify trend direction and serve as dynamic support/resistance. Tips: It lags price; combine with faster indicators for timely signals.
-- close_200_sma: 200 SMA: A long-term trend benchmark. Usage: Confirm overall market trend and identify golden/death cross setups. Tips: It reacts slowly; best for strategic trend confirmation rather than frequent trading entries.
-- close_10_ema: 10 EMA: A responsive short-term average. Usage: Capture quick shifts in momentum and potential entry points. Tips: Prone to noise in choppy markets; use alongside longer averages for filtering false signals.
+**EOD TRADING FOCUS:**
+- Target holding periods: Overnight with daily reassessment
+- Entry signals: End-of-day breakouts, daily closing patterns, overnight setups
+- Exit signals: Daily market close evaluation, next-day gap management
+- Volume confirmation: Essential for validating EOD moves and overnight positioning
 
-MACD Related:
-- macd: MACD: Computes momentum via differences of EMAs. Usage: Look for crossovers and divergence as signals of trend changes. Tips: Confirm with other indicators in low-volatility or sideways markets.
-- macds: MACD Signal: An EMA smoothing of the MACD line. Usage: Use crossovers with the MACD line to trigger trades. Tips: Should be part of a broader strategy to avoid false positives.
-- macdh: MACD Histogram: Shows the gap between the MACD line and its signal. Usage: Visualize momentum strength and spot divergence early. Tips: Can be volatile; complement with additional filters in fast-moving markets.
+Categories and Indicators for EOD TRADING:
 
-Momentum Indicators:
-- rsi: RSI: Measures momentum to flag overbought/oversold conditions. Usage: Apply 70/30 thresholds and watch for divergence to signal reversals. Tips: In strong trends, RSI may remain extreme; always cross-check with trend analysis.
+**Daily Momentum & Trend (Priority for EOD):**
+- close_10_ema: 10-period EMA – Critical for daily momentum. EOD price above = bullish overnight bias
+- close_20_sma: 20-period SMA – Key daily level. EOD breaks often signal overnight moves
+- close_50_sma: 50-period SMA – Major daily support/resistance. EOD tests create overnight setups
+- rsi: RSI (14) – Daily overbought >70, oversold <30. EOD divergences signal overnight reversals
 
-Volatility Indicators:
-- boll: Bollinger Middle: A 20 SMA serving as the basis for Bollinger Bands. Usage: Acts as a dynamic benchmark for price movement. Tips: Combine with the upper and lower bands to effectively spot breakouts or reversals.
-- boll_ub: Bollinger Upper Band: Typically 2 standard deviations above the middle line. Usage: Signals potential overbought conditions and breakout zones. Tips: Confirm signals with other tools; prices may ride the band in strong trends.
-- boll_lb: Bollinger Lower Band: Typically 2 standard deviations below the middle line. Usage: Indicates potential oversold conditions. Tips: Use additional analysis to avoid false reversal signals.
-- atr: ATR: Averages true range to measure volatility. Usage: Set stop-loss levels and adjust position sizes based on current market volatility. Tips: It's a reactive measure, so use it as part of a broader risk management strategy.
+**MACD for EOD Timing:**
+- macd: MACD line – Daily momentum detector. EOD zero-line crosses excellent for overnight entries
+- macds: MACD Signal – Daily bullish/bearish crossovers for overnight position timing
+- macdh: MACD Histogram – Growing histogram confirms EOD momentum for overnight holds
 
-Volume-Based Indicators:
-- vwma: VWMA: A moving average weighted by volume. Usage: Confirm trends by integrating price action with volume data. Tips: Watch for skewed results from volume spikes; use in combination with other volume analyses.
+**Oscillators for EOD Entry/Exit:**
+- kdjk: %K Stochastic – Daily oversold <20, overbought >80. Use for EOD entry timing
+- kdjd: %D – Smoother daily signal. %K crossing above %D at EOD = overnight buy signal
+- wr: Williams %R – Fast daily oscillator. EOD -20 to -80 range ideal for overnight entries
 
-- Select indicators that provide diverse and complementary information. Avoid redundancy (e.g., do not select both rsi and stochrsi). Also briefly explain why they are suitable for the given market context. When you tool call, please use the exact name of the indicators provided above as they are defined parameters, otherwise your call will fail. Please make sure to call get_YFin_data first to retrieve the CSV that is needed to generate indicators. Write a very detailed and nuanced report of the trends you observe. Do not simply state the trends are mixed, provide detailed and finegrained analysis and insights that may help traders make decisions."""
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
+**Daily Volatility & Support/Resistance:**
+- atr: Average True Range – Size stop losses at 1-2x daily ATR for overnight positions
+- boll_ub: Bollinger Upper Band – Daily resistance. EOD breakouts above = overnight momentum
+- boll_lb: Bollinger Lower Band – Daily support. EOD bounces create overnight opportunities
+
+**Volume Confirmation:**
+- obv: On-Balance Volume – Must confirm daily price moves. EOD divergences signal overnight reversals
+- mfi: Money Flow Index – Daily volume-weighted momentum. >80 overbought, <20 oversold for EOD
+
+**EOD TRADING ANALYSIS REQUIREMENTS:**
+1. **Daily Setup Analysis:** Identify specific price levels for EOD entries based on daily close patterns
+2. **Overnight Target Identification:** Set realistic profit targets for next day based on daily ranges
+3. **Risk Management:** Define stop-loss levels below daily support (usually 1-3% risk)
+4. **Volume Confirmation:** Ensure daily volume supports the anticipated overnight move
+5. **Daily Timeframe Context:** Focus on daily chart patterns, ignore intraday noise
+6. **Catalyst Awareness:** Consider overnight events that could drive next-day price moves
+
+Select indicators that provide **EOD-specific** insights. Prioritize daily momentum, trend strength, and daily support/resistance levels over intraday scalping or long-term investment metrics. Always analyze from an **EOD trader's perspective** focusing on overnight positioning.
+
+When you call tools, use **exact** indicator names (case-sensitive). Always call `get_alpaca_data_report` first for price data, then compute EOD-relevant indicators. Provide specific EOD trading recommendations with entry points, targets, and stop levels.
+            """
+            + """ 
+
+**EOD TRADING SUMMARY TABLE REQUIRED:**
+Make sure to append a Markdown table at the end with:
+| Metric | Value | EOD Signal | Entry Level | Overnight Target | Stop Loss |
+|--------|-------|------------|-------------|------------------|-----------|
+| [Indicator] | [Current Value] | [Bullish/Bearish/Neutral] | [Price Level] | [Target Price] | [Stop Price] |
+
+Focus on actionable EOD trading insights, not generic market commentary."""
         )
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " You are a helpful AI assistant, collaborating with other assistants."
                     " Use the provided tools to progress towards answering the question."
                     " If you are unable to fully answer, that's OK; another assistant with different tools"
                     " will help where you left off. Execute what you can to make progress."
@@ -74,16 +109,84 @@ Volume-Based Indicators:
 
         chain = prompt | llm.bind_tools(tools)
 
-        result = chain.invoke(state["messages"])
+        # Copy the incoming conversation history so we can append to it when the model makes tool calls
+        messages_history = list(state["messages"])
 
-        report = ""
+        # First LLM response
+        result = chain.invoke(messages_history)
 
-        if len(result.tool_calls) == 0:
-            report = result.content
-       
+        # Handle iterative tool calls until the model stops requesting them
+        while getattr(result, "additional_kwargs", {}).get("tool_calls"):
+            for tool_call in result.additional_kwargs["tool_calls"]:
+                # Handle different tool call structures
+                if isinstance(tool_call, dict):
+                    tool_name = tool_call.get("name") or tool_call.get("function", {}).get("name")
+                    tool_args = tool_call.get("args", {}) or tool_call.get("function", {}).get("arguments", {})
+                    if isinstance(tool_args, str):
+                        try:
+                            tool_args = json.loads(tool_args)
+                        except json.JSONDecodeError:
+                            tool_args = {}
+                else:
+                    # Handle LangChain ToolCall objects
+                    tool_name = getattr(tool_call, 'name', None)
+                    tool_args = getattr(tool_call, 'args', {})
+
+                # Find the matching tool by name
+                tool_fn = next((t for t in tools if t.name == tool_name), None)
+
+                if tool_fn is None:
+                    tool_result = f"Tool '{tool_name}' not found."
+                    print(f"[MARKET] ⚠️ {tool_result}")
+                else:
+                    try:
+                        # LangChain Tool objects expose `.run` (string IO) as well as `.invoke` (dict/kwarg IO)
+                        if hasattr(tool_fn, "invoke"):
+                            tool_result = tool_fn.invoke(tool_args)
+                        else:
+                            tool_result = tool_fn.run(**tool_args)
+                        
+                    except Exception as tool_err:
+                        tool_result = f"Error running tool '{tool_name}': {str(tool_err)}"
+
+                # Append the assistant tool call and tool result messages so the LLM can continue the conversation
+                tool_call_id = tool_call.get("id") or tool_call.get("tool_call_id")
+                ai_tool_call_msg = AIMessage(
+                    content="",
+                    additional_kwargs={"tool_calls": [tool_call]},
+                )
+                tool_msg = ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_call_id,
+                )
+
+                messages_history.append(ai_tool_call_msg)
+                messages_history.append(tool_msg)
+
+            # Ask the LLM to continue with the new context
+            result = chain.invoke(messages_history)
+        
+        # Check if the result already contains FINAL TRANSACTION PROPOSAL
+        if "FINAL TRANSACTION PROPOSAL:" not in result.content:
+            # Create a simple prompt that includes the analysis content directly
+            final_prompt = f"""Based on the following market and technical analysis for {ticker}, please provide your final trading recommendation.
+
+Analysis:
+{result.content}
+
+You must conclude with: FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** followed by a brief justification."""
+            
+            # Use a simple chain without tools for the final recommendation
+            final_chain = llm
+            final_result = final_chain.invoke(final_prompt)
+            
+            # Combine the analysis with the final proposal
+            combined_content = result.content + "\n\n" + final_result.content
+            result = AIMessage(content=combined_content)
+
         return {
             "messages": [result],
-            "market_report": report,
+            "market_report": result.content,
         }
 
     return market_analyst_node

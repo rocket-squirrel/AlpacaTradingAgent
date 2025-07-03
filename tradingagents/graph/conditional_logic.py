@@ -43,6 +43,14 @@ class ConditionalLogic:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
 
+    def should_continue_macro(self, state: AgentState):
+        """Determine if macro analysis should continue."""
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_macro"
+        return "Msg Clear Macro"
+
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
 
@@ -60,6 +68,12 @@ class ConditionalLogic:
             state["risk_debate_state"]["count"] >= 3 * self.max_risk_discuss_rounds
         ):  # 3 rounds of back-and-forth between 3 agents
             return "Risk Judge"
+            
+        # Check if latest_speaker exists in the state, if not initialize it
+        if "latest_speaker" not in state["risk_debate_state"]:
+            # Default to Risky Analyst as the first speaker
+            state["risk_debate_state"]["latest_speaker"] = "Risky"
+            
         if state["risk_debate_state"]["latest_speaker"].startswith("Risky"):
             return "Safe Analyst"
         if state["risk_debate_state"]["latest_speaker"].startswith("Safe"):

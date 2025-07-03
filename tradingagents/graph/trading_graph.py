@@ -7,9 +7,6 @@ from datetime import date
 from typing import Dict, Any, Tuple, List, Optional
 
 from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
-
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
@@ -21,6 +18,7 @@ from tradingagents.agents.utils.agent_states import (
     RiskDebateState,
 )
 from tradingagents.dataflows.interface import set_config
+from tradingagents.dataflows.config import get_api_key
 
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
@@ -34,7 +32,7 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
+        selected_analysts=["market", "social", "news", "fundamentals", "macro"],
         debug=False,
         config: Dict[str, Any] = None,
     ):
@@ -57,33 +55,53 @@ class TradingAgentsGraph:
             exist_ok=True,
         )
 
-        # Initialize LLMs
-        if self.config["llm_provider"].lower() == "openai" or self.config["llm_provider"] == "ollama" or self.config["llm_provider"] == "openrouter":
-            self.deep_thinking_llm = ChatOpenAI(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
-            self.quick_thinking_llm = ChatOpenAI(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
-        elif self.config["llm_provider"].lower() == "anthropic":
-            self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
-            self.quick_thinking_llm = ChatAnthropic(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
-        elif self.config["llm_provider"].lower() == "google":
-            self.deep_thinking_llm = ChatGoogleGenerativeAI(model=self.config["deep_think_llm"])
-            self.quick_thinking_llm = ChatGoogleGenerativeAI(model=self.config["quick_think_llm"])
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.config['llm_provider']}")
+        # Get API key from environment variables or config
+        api_key = get_api_key("openai_api_key", "OPENAI_API_KEY")
+
+        # Initialize LLMs with appropriate parameters based on model type
+        deep_think_model = self.config["deep_think_llm"]
+        quick_think_model = self.config["quick_think_llm"]
+        
+        # Check if models are Claude models (o3, o3-mini, o4-mini) which don't support temperature
+        deep_think_kwargs = {}
+        quick_think_kwargs = {}
+        
+        # Claude models don't support temperature parameter
+        if not any(model_prefix in deep_think_model for model_prefix in ["o3", "o4-mini"]):
+            deep_think_kwargs["temperature"] = 0.7
+            
+        if not any(model_prefix in quick_think_model for model_prefix in ["o3", "o4-mini"]):
+            quick_think_kwargs["temperature"] = 0.1
+        
+        self.deep_thinking_llm = ChatOpenAI(
+            model=deep_think_model, 
+            openai_api_key=api_key,
+            **deep_think_kwargs
+        )
+        
+        self.quick_thinking_llm = ChatOpenAI(
+            model=quick_think_model, 
+            openai_api_key=api_key,
+            **quick_think_kwargs
+        )
         
         self.toolkit = Toolkit(config=self.config)
 
         # Initialize memories
-        self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
-        self.bear_memory = FinancialSituationMemory("bear_memory", self.config)
-        self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
-        self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
-        self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
+        self.bull_memory = FinancialSituationMemory("bull_memory")
+        self.bear_memory = FinancialSituationMemory("bear_memory")
+        self.trader_memory = FinancialSituationMemory("trader_memory")
+        self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory")
+        self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory")
 
         # Create tool nodes
         self.tool_nodes = self._create_tool_nodes()
 
         # Initialize components
-        self.conditional_logic = ConditionalLogic()
+        self.conditional_logic = ConditionalLogic(
+            max_debate_rounds=self.config.get("max_debate_rounds", 2), 
+            max_risk_discuss_rounds=self.config.get("max_risk_discuss_rounds", 2)
+        )
         self.graph_setup = GraphSetup(
             self.quick_thinking_llm,
             self.deep_thinking_llm,
@@ -95,6 +113,7 @@ class TradingAgentsGraph:
             self.invest_judge_memory,
             self.risk_manager_memory,
             self.conditional_logic,
+            self.config,
         )
 
         self.propagator = Propagator()
@@ -115,11 +134,13 @@ class TradingAgentsGraph:
             "market": ToolNode(
                 [
                     # online tools
-                    self.toolkit.get_YFin_data_online,
+                    self.toolkit.get_alpaca_data,
                     self.toolkit.get_stockstats_indicators_report_online,
                     # offline tools
-                    self.toolkit.get_YFin_data,
                     self.toolkit.get_stockstats_indicators_report,
+                    self.toolkit.get_alpaca_data_report,
+                    # crypto
+                    self.toolkit.get_coindesk_news,
                 ]
             ),
             "social": ToolNode(
@@ -128,6 +149,8 @@ class TradingAgentsGraph:
                     self.toolkit.get_stock_news_openai,
                     # offline tools
                     self.toolkit.get_reddit_stock_info,
+                    # crypto
+                    self.toolkit.get_coindesk_news,
                 ]
             ),
             "news": ToolNode(
@@ -138,18 +161,32 @@ class TradingAgentsGraph:
                     # offline tools
                     self.toolkit.get_finnhub_news,
                     self.toolkit.get_reddit_news,
+                    # crypto
+                    self.toolkit.get_coindesk_news,
                 ]
             ),
             "fundamentals": ToolNode(
                 [
                     # online tools
                     self.toolkit.get_fundamentals_openai,
+                    self.toolkit.get_defillama_fundamentals,
                     # offline tools
                     self.toolkit.get_finnhub_company_insider_sentiment,
                     self.toolkit.get_finnhub_company_insider_transactions,
                     self.toolkit.get_simfin_balance_sheet,
                     self.toolkit.get_simfin_cashflow,
                     self.toolkit.get_simfin_income_stmt,
+                    # earnings tools
+                    self.toolkit.get_earnings_calendar,
+                    self.toolkit.get_earnings_surprise_analysis,
+                ]
+            ),
+            "macro": ToolNode(
+                [
+                    # macro economic tools
+                    self.toolkit.get_macro_analysis,
+                    self.toolkit.get_economic_indicators,
+                    self.toolkit.get_yield_curve_analysis,
                 ]
             ),
         }
@@ -226,7 +263,7 @@ class TradingAgentsGraph:
         directory.mkdir(parents=True, exist_ok=True)
 
         with open(
-            f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/full_states_log_{trade_date}.json",
+            f"eval_results/{self.ticker}/TradingAgentsStrategy_logs/full_states_log.json",
             "w",
         ) as f:
             json.dump(self.log_states_dict, f, indent=4)

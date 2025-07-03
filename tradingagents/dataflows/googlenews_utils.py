@@ -25,18 +25,19 @@ def is_rate_limited(response):
 )
 def make_request(url, headers):
     """Make a request with retry logic for rate limiting"""
-    # Random delay before each request to avoid detection
-    time.sleep(random.uniform(2, 6))
+    # Reduced delay for better performance while still avoiding detection
+    time.sleep(random.uniform(1, 3))
     response = requests.get(url, headers=headers)
     return response
 
 
-def getNewsData(query, start_date, end_date):
+def getNewsData(query, start_date, end_date, max_pages=3):
     """
     Scrape Google News search results for a given query and date range.
     query: str - search query
     start_date: str - start date in the format yyyy-mm-dd or mm/dd/yyyy
     end_date: str - end date in the format yyyy-mm-dd or mm/dd/yyyy
+    max_pages: int - maximum number of pages to scrape (default 3, each page has ~10 results)
     """
     if "-" in start_date:
         start_date = datetime.strptime(start_date, "%Y-%m-%d")
@@ -55,7 +56,7 @@ def getNewsData(query, start_date, end_date):
 
     news_results = []
     page = 0
-    while True:
+    while page < max_pages:
         offset = page * 10
         url = (
             f"https://www.google.com/search?q={query}"
@@ -74,10 +75,19 @@ def getNewsData(query, start_date, end_date):
             for el in results_on_page:
                 try:
                     link = el.find("a")["href"]
-                    title = el.select_one("div.MBeuO").get_text()
-                    snippet = el.select_one(".GI74Re").get_text()
-                    date = el.select_one(".LfVVr").get_text()
-                    source = el.select_one(".NUnG9d span").get_text()
+                    title_el = el.select_one("div.MBeuO")
+                    snippet_el = el.select_one(".GI74Re")
+                    date_el = el.select_one(".LfVVr")
+                    source_el = el.select_one(".NUnG9d span")
+
+                    # Skip this result if mandatory fields are missing
+                    if not title_el or not snippet_el:
+                        continue
+
+                    title = title_el.get_text()
+                    snippet = snippet_el.get_text()
+                    date = date_el.get_text() if date_el else "Unknown"
+                    source = source_el.get_text() if source_el else "Unknown"
                     news_results.append(
                         {
                             "link": link,

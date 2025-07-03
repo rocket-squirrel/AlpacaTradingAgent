@@ -80,7 +80,7 @@ Our framework decomposes complex trading tasks into specialized roles. This ensu
 - Composes reports from the analysts and researchers to make informed trading decisions. It determines the timing and magnitude of trades based on comprehensive market insights.
 
 <p align="center">
-  <img src="assets/trader.png" width="70%" style="display: inline-block; margin: 0 2%;">
+  <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
 ### Risk Management and Portfolio Manager
@@ -88,7 +88,7 @@ Our framework decomposes complex trading tasks into specialized roles. This ensu
 - The Portfolio Manager approves/rejects the transaction proposal. If approved, the order will be sent to the simulated exchange and executed.
 
 <p align="center">
-  <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
+  <img src="assets/trader.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
 ## Installation and CLI
@@ -124,6 +124,40 @@ You will need the OpenAI API for all the agents.
 export OPENAI_API_KEY=$YOUR_OPENAI_API_KEY
 ```
 
+Alternatively, you can create a `.env` file in the project root directory with your API keys:
+```
+# OpenAI API Key
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Other API keys
+FINNHUB_API_KEY=your_finnhub_api_key_here
+```
+
+### API Keys Configuration
+
+For the full functionality of TradingAgents, including real-time stock data, you'll need to set up the following API keys:
+
+1. **Copy the sample environment file**:
+   ```bash
+   cp env.sample .env
+   ```
+
+2. **Edit the `.env` file** with your API keys:
+   - **Alpaca API Keys**: Required for real stock market data
+     - Sign up at [Alpaca Markets](https://app.alpaca.markets/signup)
+     - Get your API key and secret from the dashboard
+     - Set paper trading mode:
+       - `ALPACA_USE_PAPER=True` for paper trading (recommended for testing)
+       - `ALPACA_USE_PAPER=False` for live trading with real money
+   - **OpenAI API Key**: Required for LLM functionality
+     - Sign up at [OpenAI Platform](https://platform.openai.com/api-keys)
+   - **Finnhub API Key**: Required for financial news and data
+     - Sign up at [Finnhub](https://finnhub.io/register)
+
+3. **Restart the application** after setting up your API keys.
+
+> **Note**: Without valid Alpaca API keys, the application will fall back to using demo data for stock charts.
+
 ### CLI Usage
 
 You can also try out the CLI directly by running:
@@ -145,6 +179,44 @@ An interface will appear showing results as they load, letting you track the age
 <p align="center">
   <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
 </p>
+
+### Web UI Usage
+
+We provide a web-based user interface built with Dash and Flask that offers improved visualization:
+
+```bash
+python run_webui_dash.py
+```
+
+Common options:
+- `--port PORT`: Specify a custom port (default: 7860)
+- `--share`: Create a public link to share with others
+- `--server-name`: Specify the server name/IP to bind to (default: 127.0.0.1)
+- `--debug`: Run in debug mode with more logging
+- `--max-threads N`: Set the maximum number of threads (default: 40)
+
+This will start a local web server, and you can access the UI by opening your browser to http://localhost:7860.
+
+> **Note**: The web UI requires Dash 3.0+ and dash-bootstrap-components 2.0+. You can install them with `pip install dash>=3.0.0 dash-bootstrap-components>=2.0.0`.
+
+The web UI offers several advantages over the CLI:
+- Interactive stock charts with technical indicators
+- Tabbed interface to easily navigate through different reports
+- Real-time status updates for each agent
+- Better visualization of analysis results and progress
+
+<p align="center">
+  <img src="assets/webui-demo.png" width="100%" style="display: inline-block; margin: 0 2%;">
+</p>
+
+You can also integrate it into your workflow by importing the module:
+
+```python
+from webui.app_dash import app
+
+# Launch the Dash app
+app.run(debug=True, port=8050)
+```
 
 ## TradingAgents Package
 

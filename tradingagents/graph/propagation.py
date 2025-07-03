@@ -11,7 +11,7 @@ from tradingagents.agents.utils.agent_states import (
 class Propagator:
     """Handles state initialization and propagation through the graph."""
 
-    def __init__(self, max_recur_limit=100):
+    def __init__(self, max_recur_limit=200):
         """Initialize with configuration parameters."""
         self.max_recur_limit = max_recur_limit
 
@@ -19,9 +19,12 @@ class Propagator:
         self, company_name: str, trade_date: str
     ) -> Dict[str, Any]:
         """Create the initial state for the agent graph."""
+        # Preserve the original ticker format for cryptocurrencies and other symbols
+        ticker_symbol = company_name
+        
         return {
-            "messages": [("human", company_name)],
-            "company_of_interest": company_name,
+            "messages": [("human", ticker_symbol)],
+            "company_of_interest": ticker_symbol,
             "trade_date": str(trade_date),
             "investment_debate_state": InvestDebateState(
                 {"history": "", "current_response": "", "count": 0}
@@ -32,6 +35,7 @@ class Propagator:
                     "current_risky_response": "",
                     "current_safe_response": "",
                     "current_neutral_response": "",
+                    "latest_speaker": "Risky",  # Initialize latest speaker
                     "count": 0,
                 }
             ),

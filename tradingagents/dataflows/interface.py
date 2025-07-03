@@ -1,9 +1,13 @@
 from typing import Annotated, Dict
 from .reddit_utils import fetch_top_from_category
-from .yfin_utils import *
 from .stockstats_utils import *
 from .googlenews_utils import *
 from .finnhub_utils import get_data_in_range
+from .alpaca_utils import AlpacaUtils
+from .coindesk_utils import get_news as get_coindesk_news_util
+from .defillama_utils import get_fundamentals as get_defillama_fundamentals_util
+from .earnings_utils import get_earnings_calendar_data, get_earnings_surprises_analysis
+from .macro_utils import get_macro_economic_summary, get_economic_indicators_report, get_treasury_yield_curve
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -11,9 +15,8 @@ import json
 import os
 import pandas as pd
 from tqdm import tqdm
-import yfinance as yf
 from openai import OpenAI
-from .config import get_config, set_config, DATA_DIR
+from .config import get_config, set_config, DATA_DIR, get_api_key
 
 
 def get_finnhub_news(
@@ -139,6 +142,31 @@ def get_finnhub_company_insider_transactions(
         + result_str
         + "The change field reflects the variation in share count—here a negative number indicates a reduction in holdings—while share specifies the total number of shares involved. The transactionPrice denotes the per-share price at which the trade was executed, and transactionDate marks when the transaction occurred. The name field identifies the insider making the trade, and transactionCode (e.g., S for sale) clarifies the nature of the transaction. FilingDate records when the transaction was officially reported, and the unique id links to the specific SEC filing, as indicated by the source. Additionally, the symbol ties the transaction to a particular company, isDerivative flags whether the trade involves derivative securities, and currency notes the currency context of the transaction."
     )
+
+
+def get_coindesk_news(
+    ticker: Annotated[str, "Ticker symbol, e.g. 'BTCUSD', 'ETH', etc."],
+    num_sentences: Annotated[int, "Number of sentences to include from news body."] = 5,
+) -> str:
+    """
+    Retrieve news for a cryptocurrency.
+    This function checks if the ticker is a crypto pair (like BTCUSD) and extracts the base currency.
+    Then it fetches news for that cryptocurrency from CryptoCompare.
+
+    Args:
+        ticker (str): Ticker symbol for the cryptocurrency.
+        num_sentences (int): Number of sentences to extract from the body of each news article.
+
+    Returns:
+        str: Formatted string containing news.
+    """
+    crypto_symbol = ticker.upper()
+    if "/" in crypto_symbol:
+        crypto_symbol = crypto_symbol.split('/')[0]
+    else:
+        crypto_symbol = crypto_symbol.replace("USDT", "").replace("USD", "")
+
+    return get_coindesk_news_util(crypto_symbol, n=num_sentences)
 
 
 def get_simfin_balance_sheet(
@@ -293,7 +321,8 @@ def get_google_news(
     before = start_date - relativedelta(days=look_back_days)
     before = before.strftime("%Y-%m-%d")
 
-    news_results = getNewsData(query, before, curr_date)
+    # Limit to 2 pages for better performance (about 20 articles max)
+    news_results = getNewsData(query, before, curr_date, max_pages=2)
 
     news_str = ""
 
@@ -428,131 +457,49 @@ def get_stock_stats_indicators_window(
     look_back_days: Annotated[int, "how many days to look back"],
     online: Annotated[bool, "to fetch data online or offline"],
 ) -> str:
+    """
+    Get a window of technical indicators for a stock
+    Args:
+        symbol: ticker symbol of the company
+        indicator: technical indicator to get the analysis and report of
+        curr_date: The current trading date you are trading on, YYYY-mm-dd
+        look_back_days: how many days to look back
+        online: to fetch data online or offline
+    Returns:
+        str: a report of the technical indicator for the stock
+    """
+    curr_date_dt = pd.to_datetime(curr_date)
+    dates = []
+    values = []
 
-    best_ind_params = {
-        # Moving Averages
-        "close_50_sma": (
-            "50 SMA: A medium-term trend indicator. "
-            "Usage: Identify trend direction and serve as dynamic support/resistance. "
-            "Tips: It lags price; combine with faster indicators for timely signals."
-        ),
-        "close_200_sma": (
-            "200 SMA: A long-term trend benchmark. "
-            "Usage: Confirm overall market trend and identify golden/death cross setups. "
-            "Tips: It reacts slowly; best for strategic trend confirmation rather than frequent trading entries."
-        ),
-        "close_10_ema": (
-            "10 EMA: A responsive short-term average. "
-            "Usage: Capture quick shifts in momentum and potential entry points. "
-            "Tips: Prone to noise in choppy markets; use alongside longer averages for filtering false signals."
-        ),
-        # MACD Related
-        "macd": (
-            "MACD: Computes momentum via differences of EMAs. "
-            "Usage: Look for crossovers and divergence as signals of trend changes. "
-            "Tips: Confirm with other indicators in low-volatility or sideways markets."
-        ),
-        "macds": (
-            "MACD Signal: An EMA smoothing of the MACD line. "
-            "Usage: Use crossovers with the MACD line to trigger trades. "
-            "Tips: Should be part of a broader strategy to avoid false positives."
-        ),
-        "macdh": (
-            "MACD Histogram: Shows the gap between the MACD line and its signal. "
-            "Usage: Visualize momentum strength and spot divergence early. "
-            "Tips: Can be volatile; complement with additional filters in fast-moving markets."
-        ),
-        # Momentum Indicators
-        "rsi": (
-            "RSI: Measures momentum to flag overbought/oversold conditions. "
-            "Usage: Apply 70/30 thresholds and watch for divergence to signal reversals. "
-            "Tips: In strong trends, RSI may remain extreme; always cross-check with trend analysis."
-        ),
-        # Volatility Indicators
-        "boll": (
-            "Bollinger Middle: A 20 SMA serving as the basis for Bollinger Bands. "
-            "Usage: Acts as a dynamic benchmark for price movement. "
-            "Tips: Combine with the upper and lower bands to effectively spot breakouts or reversals."
-        ),
-        "boll_ub": (
-            "Bollinger Upper Band: Typically 2 standard deviations above the middle line. "
-            "Usage: Signals potential overbought conditions and breakout zones. "
-            "Tips: Confirm signals with other tools; prices may ride the band in strong trends."
-        ),
-        "boll_lb": (
-            "Bollinger Lower Band: Typically 2 standard deviations below the middle line. "
-            "Usage: Indicates potential oversold conditions. "
-            "Tips: Use additional analysis to avoid false reversal signals."
-        ),
-        "atr": (
-            "ATR: Averages true range to measure volatility. "
-            "Usage: Set stop-loss levels and adjust position sizes based on current market volatility. "
-            "Tips: It's a reactive measure, so use it as part of a broader risk management strategy."
-        ),
-        # Volume-Based Indicators
-        "vwma": (
-            "VWMA: A moving average weighted by volume. "
-            "Usage: Confirm trends by integrating price action with volume data. "
-            "Tips: Watch for skewed results from volume spikes; use in combination with other volume analyses."
-        ),
-        "mfi": (
-            "MFI: The Money Flow Index is a momentum indicator that uses both price and volume to measure buying and selling pressure. "
-            "Usage: Identify overbought (>80) or oversold (<20) conditions and confirm the strength of trends or reversals. "
-            "Tips: Use alongside RSI or MACD to confirm signals; divergence between price and MFI can indicate potential reversals."
-        ),
-    }
+    # Generate dates
+    for i in range(look_back_days, 0, -1):
+        date = curr_date_dt - pd.DateOffset(days=i)
+        dates.append(date.strftime("%Y-%m-%d"))
 
-    if indicator not in best_ind_params:
-        raise ValueError(
-            f"Indicator {indicator} is not supported. Please choose from: {list(best_ind_params.keys())}"
-        )
+    # Add current date
+    dates.append(curr_date)
 
-    end_date = curr_date
-    curr_date = datetime.strptime(curr_date, "%Y-%m-%d")
-    before = curr_date - relativedelta(days=look_back_days)
-
-    if not online:
-        # read from YFin data
-        data = pd.read_csv(
-            os.path.join(
-                DATA_DIR,
-                f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
+    # Get indicator values for each date
+    for date in dates:
+        try:
+            value = StockstatsUtils.get_stock_stats(
+                symbol=symbol,
+                indicator=indicator,
+                curr_date=date,
+                data_dir=DATA_DIR,
+                online=online,
             )
-        )
-        data["Date"] = pd.to_datetime(data["Date"], utc=True)
-        dates_in_df = data["Date"].astype(str).str[:10]
+            values.append(value)
+        except Exception as e:
+            values.append("N/A")
 
-        ind_string = ""
-        while curr_date >= before:
-            # only do the trading dates
-            if curr_date.strftime("%Y-%m-%d") in dates_in_df.values:
-                indicator_value = get_stockstats_indicator(
-                    symbol, indicator, curr_date.strftime("%Y-%m-%d"), online
-                )
+    # Format the result
+    result = f"## {indicator} for {symbol} from {dates[0]} to {dates[-1]}:\n\n"
+    for i in range(len(dates)):
+        result += f"- {dates[i]}: {values[i]}\n"
 
-                ind_string += f"{curr_date.strftime('%Y-%m-%d')}: {indicator_value}\n"
-
-            curr_date = curr_date - relativedelta(days=1)
-    else:
-        # online gathering
-        ind_string = ""
-        while curr_date >= before:
-            indicator_value = get_stockstats_indicator(
-                symbol, indicator, curr_date.strftime("%Y-%m-%d"), online
-            )
-
-            ind_string += f"{curr_date.strftime('%Y-%m-%d')}: {indicator_value}\n"
-
-            curr_date = curr_date - relativedelta(days=1)
-
-    result_str = (
-        f"## {indicator} values from {before.strftime('%Y-%m-%d')} to {end_date}:\n\n"
-        + ind_string
-        + "\n\n"
-        + best_ind_params.get(indicator, "No description available.")
-    )
-
-    return result_str
+    return result
 
 
 def get_stockstats_indicator(
@@ -563,245 +510,381 @@ def get_stockstats_indicator(
     ],
     online: Annotated[bool, "to fetch data online or offline"],
 ) -> str:
-
-    curr_date = datetime.strptime(curr_date, "%Y-%m-%d")
-    curr_date = curr_date.strftime("%Y-%m-%d")
-
+    """
+    Get a technical indicator for a stock
+    Args:
+        symbol: ticker symbol of the company
+        indicator: technical indicator to get the analysis and report of
+        curr_date: The current trading date you are trading on, YYYY-mm-dd
+        online: to fetch data online or offline
+    Returns:
+        str: a report of the technical indicator for the stock
+    """
     try:
-        indicator_value = StockstatsUtils.get_stock_stats(
-            symbol,
-            indicator,
-            curr_date,
-            os.path.join(DATA_DIR, "market_data", "price_data"),
+        value = StockstatsUtils.get_stock_stats(
+            symbol=symbol,
+            indicator=indicator,
+            curr_date=curr_date,
+            data_dir=DATA_DIR,
             online=online,
         )
+        return f"## {indicator} for {symbol} on {curr_date}: {value}"
     except Exception as e:
-        print(
-            f"Error getting stockstats indicator data for indicator {indicator} on {curr_date}: {e}"
-        )
-        return ""
-
-    return str(indicator_value)
-
-
-def get_YFin_data_window(
-    symbol: Annotated[str, "ticker symbol of the company"],
-    curr_date: Annotated[str, "Start date in yyyy-mm-dd format"],
-    look_back_days: Annotated[int, "how many days to look back"],
-) -> str:
-    # calculate past days
-    date_obj = datetime.strptime(curr_date, "%Y-%m-%d")
-    before = date_obj - relativedelta(days=look_back_days)
-    start_date = before.strftime("%Y-%m-%d")
-
-    # read in data
-    data = pd.read_csv(
-        os.path.join(
-            DATA_DIR,
-            f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
-        )
-    )
-
-    # Extract just the date part for comparison
-    data["DateOnly"] = data["Date"].str[:10]
-
-    # Filter data between the start and end dates (inclusive)
-    filtered_data = data[
-        (data["DateOnly"] >= start_date) & (data["DateOnly"] <= curr_date)
-    ]
-
-    # Drop the temporary column we created
-    filtered_data = filtered_data.drop("DateOnly", axis=1)
-
-    # Set pandas display options to show the full DataFrame
-    with pd.option_context(
-        "display.max_rows", None, "display.max_columns", None, "display.width", None
-    ):
-        df_string = filtered_data.to_string()
-
-    return (
-        f"## Raw Market Data for {symbol} from {start_date} to {curr_date}:\n\n"
-        + df_string
-    )
-
-
-def get_YFin_data_online(
-    symbol: Annotated[str, "ticker symbol of the company"],
-    start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
-    end_date: Annotated[str, "End date in yyyy-mm-dd format"],
-):
-
-    datetime.strptime(start_date, "%Y-%m-%d")
-    datetime.strptime(end_date, "%Y-%m-%d")
-
-    # Create ticker object
-    ticker = yf.Ticker(symbol.upper())
-
-    # Fetch historical data for the specified date range
-    data = ticker.history(start=start_date, end=end_date)
-
-    # Check if data is empty
-    if data.empty:
-        return (
-            f"No data found for symbol '{symbol}' between {start_date} and {end_date}"
-        )
-
-    # Remove timezone info from index for cleaner output
-    if data.index.tz is not None:
-        data.index = data.index.tz_localize(None)
-
-    # Round numerical values to 2 decimal places for cleaner display
-    numeric_columns = ["Open", "High", "Low", "Close", "Adj Close"]
-    for col in numeric_columns:
-        if col in data.columns:
-            data[col] = data[col].round(2)
-
-    # Convert DataFrame to CSV string
-    csv_string = data.to_csv()
-
-    # Add header information
-    header = f"# Stock data for {symbol.upper()} from {start_date} to {end_date}\n"
-    header += f"# Total records: {len(data)}\n"
-    header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-
-    return header + csv_string
-
-
-def get_YFin_data(
-    symbol: Annotated[str, "ticker symbol of the company"],
-    start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
-    end_date: Annotated[str, "End date in yyyy-mm-dd format"],
-) -> str:
-    # read in data
-    data = pd.read_csv(
-        os.path.join(
-            DATA_DIR,
-            f"market_data/price_data/{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
-        )
-    )
-
-    if end_date > "2025-03-25":
-        raise Exception(
-            f"Get_YFin_Data: {end_date} is outside of the data range of 2015-01-01 to 2025-03-25"
-        )
-
-    # Extract just the date part for comparison
-    data["DateOnly"] = data["Date"].str[:10]
-
-    # Filter data between the start and end dates (inclusive)
-    filtered_data = data[
-        (data["DateOnly"] >= start_date) & (data["DateOnly"] <= end_date)
-    ]
-
-    # Drop the temporary column we created
-    filtered_data = filtered_data.drop("DateOnly", axis=1)
-
-    # remove the index from the dataframe
-    filtered_data = filtered_data.reset_index(drop=True)
-
-    return filtered_data
+        return f"Error getting {indicator} for {symbol}: {str(e)}"
 
 
 def get_stock_news_openai(ticker, curr_date):
-    config = get_config()
-    client = OpenAI(base_url=config["backend_url"])
+    # Get API key from environment variables or config
+    api_key = get_api_key("openai_api_key", "OPENAI_API_KEY")
+    if not api_key:
+        return f"Error: OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Get the selected quick model from config
+        config = get_config()
+        model = config.get("quick_think_llm", "gpt-4o-mini")  # fallback to default
+        
+        from datetime import datetime, timedelta
+        start_date = (datetime.strptime(curr_date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    response = client.responses.create(
-        model=config["quick_think_llm"],
-        input=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": f"Can you search Social Media for {ticker} from 7 days before {curr_date} to {curr_date}? Make sure you only get the data posted during that period.",
-                    }
-                ],
-            }
-        ],
-        text={"format": {"type": "text"}},
-        reasoning={},
-        tools=[
-            {
-                "type": "web_search_preview",
-                "user_location": {"type": "approximate"},
-                "search_context_size": "low",
-            }
-        ],
-        temperature=1,
-        max_output_tokens=4096,
-        top_p=1,
-        store=True,
-    )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a financial research assistant. Provide comprehensive social media sentiment analysis and recent news about the specified stock ticker. Focus on sentiment trends, key discussions, and any notable developments."
+                },
+                {
+                    "role": "user",
+                    "content": f"Analyze social media sentiment and recent news for {ticker} from {start_date} to {curr_date}. Include:\n"
+                             f"1. Overall sentiment analysis\n"
+                             f"2. Key themes and discussions\n"
+                             f"3. Notable price-moving news or events\n"
+                             f"4. Trading implications based on sentiment\n"
+                             f"5. Summary table with key metrics"
+                }
+            ],
+            temperature=0.7,
+            max_tokens=3000
+        )
 
-    return response.output[1].content[0].text
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error fetching social media analysis for {ticker}: {str(e)}"
 
 
 def get_global_news_openai(curr_date):
-    config = get_config()
-    client = OpenAI(base_url=config["backend_url"])
+    # Get API key from environment variables or config
+    api_key = get_api_key("openai_api_key", "OPENAI_API_KEY")
+    if not api_key:
+        return f"Error: OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Get the selected quick model from config
+        config = get_config()
+        model = config.get("quick_think_llm", "gpt-4o-mini")  # fallback to default
+        
+        from datetime import datetime, timedelta
+        start_date = (datetime.strptime(curr_date, "%Y-%m-%d") - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    response = client.responses.create(
-        model=config["quick_think_llm"],
-        input=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": f"Can you search global or macroeconomics news from 7 days before {curr_date} to {curr_date} that would be informative for trading purposes? Make sure you only get the data posted during that period.",
-                    }
-                ],
-            }
-        ],
-        text={"format": {"type": "text"}},
-        reasoning={},
-        tools=[
-            {
-                "type": "web_search_preview",
-                "user_location": {"type": "approximate"},
-                "search_context_size": "low",
-            }
-        ],
-        temperature=1,
-        max_output_tokens=4096,
-        top_p=1,
-        store=True,
-    )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a financial news analyst. Provide comprehensive analysis of global and macroeconomic news that could impact financial markets and trading decisions."
+                },
+                {
+                    "role": "user",
+                    "content": f"Analyze global and macroeconomic news from {start_date} to {curr_date} that would be informative for trading purposes. Include:\n"
+                             f"1. Major economic events and announcements\n"
+                             f"2. Central bank policy updates\n"
+                             f"3. Geopolitical developments affecting markets\n"
+                             f"4. Economic data releases and their implications\n"
+                             f"5. Trading implications and market sentiment\n"
+                             f"6. Summary table with key events and impact levels"
+                }
+            ],
+            temperature=0.7,
+            max_tokens=3000
+        )
 
-    return response.output[1].content[0].text
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error fetching global news analysis: {str(e)}"
 
 
 def get_fundamentals_openai(ticker, curr_date):
-    config = get_config()
-    client = OpenAI(base_url=config["backend_url"])
+    # Get API key from environment variables or config
+    api_key = get_api_key("openai_api_key", "OPENAI_API_KEY")
+    if not api_key:
+        return f"Error: OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
+    
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # Get the selected quick model from config
+        config = get_config()
+        model = config.get("quick_think_llm", "gpt-4o-mini")  # fallback to default
+        
+        from datetime import datetime, timedelta
+        start_date = (datetime.strptime(curr_date, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    response = client.responses.create(
-        model=config["quick_think_llm"],
-        input=[
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": f"Can you search Fundamental for discussions on {ticker} during of the month before {curr_date} to the month of {curr_date}. Make sure you only get the data posted during that period. List as a table, with PE/PS/Cash flow/ etc",
-                    }
-                ],
-            }
-        ],
-        text={"format": {"type": "text"}},
-        reasoning={},
-        tools=[
-            {
-                "type": "web_search_preview",
-                "user_location": {"type": "approximate"},
-                "search_context_size": "low",
-            }
-        ],
-        temperature=1,
-        max_output_tokens=4096,
-        top_p=1,
-        store=True,
-    )
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a fundamental analyst specializing in financial analysis and valuation. Provide comprehensive fundamental analysis based on available financial metrics and recent company developments."
+                },
+                {
+                    "role": "user",
+                    "content": f"Provide a fundamental analysis for {ticker} covering the period from {start_date} to {curr_date}. Include:\n"
+                             f"1. Key financial metrics (P/E, P/S, P/B, EV/EBITDA, etc.)\n"
+                             f"2. Revenue and earnings trends\n"
+                             f"3. Cash flow analysis\n"
+                             f"4. Balance sheet strength\n"
+                             f"5. Competitive positioning\n"
+                             f"6. Recent business developments\n"
+                             f"7. Valuation assessment\n"
+                             f"8. Summary table with key fundamental metrics and ratios\n\n"
+                             f"Format the analysis professionally with clear sections and include a summary table at the end."
+                }
+            ],
+            temperature=0.7,
+            max_tokens=3000
+        )
 
-    return response.output[1].content[0].text
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error fetching fundamental analysis for {ticker}: {str(e)}"
+
+
+def get_defillama_fundamentals(
+    ticker: Annotated[str, "Crypto ticker symbol (without USD/USDT suffix)"],
+    lookback_days: Annotated[int, "Number of days to look back for data"] = 30,
+) -> str:
+    """
+    Get fundamental data for a cryptocurrency from DeFi Llama
+    
+    Args:
+        ticker: Crypto ticker symbol (e.g., BTC, ETH, UNI)
+        lookback_days: Number of days to look back for data
+        
+    Returns:
+        str: Markdown-formatted fundamentals report for the cryptocurrency
+    """
+    # Clean the ticker - remove any USD/USDT suffix if present
+    clean_ticker = ticker.upper().replace("USD", "").replace("USDT", "")
+    if "/" in clean_ticker:
+        clean_ticker = clean_ticker.split("/")[0]
+        
+    try:
+        return get_defillama_fundamentals_util(clean_ticker, lookback_days)
+    except Exception as e:
+        return f"Error fetching DeFi Llama data for {clean_ticker}: {str(e)}"
+
+
+def get_alpaca_data_window(
+    symbol: Annotated[str, "ticker symbol of the company"],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"] = None,
+    look_back_days: Annotated[int, "how many days to look back"] = 60,
+    timeframe: Annotated[str, "Timeframe for data: 1Min, 5Min, 15Min, 1Hour, 1Day"] = "1Day",
+) -> str:
+    """
+    Get a window of stock data from Alpaca
+    Args:
+        symbol: ticker symbol of the company
+        curr_date: The current trading date you are trading on, YYYY-mm-dd (optional - if not provided, will use today's date)
+        look_back_days: how many days to look back
+        timeframe: Timeframe for data (1Min, 5Min, 15Min, 1Hour, 1Day)
+    Returns:
+        str: a report of the stock data
+    """
+    try:
+        # Calculate start date based on look_back_days
+        if curr_date:
+            curr_dt = pd.to_datetime(curr_date)
+        else:
+            curr_dt = pd.to_datetime(datetime.now().strftime("%Y-%m-%d"))
+            
+        start_dt = curr_dt - pd.Timedelta(days=look_back_days)
+        start_date = start_dt.strftime("%Y-%m-%d")
+        
+        # Get data from Alpaca - don't pass end_date to avoid subscription limitations
+        data = AlpacaUtils.get_stock_data(
+            symbol=symbol,
+            start_date=start_date,
+            timeframe=timeframe
+        )
+        
+        if data.empty:
+            return f"No data found for {symbol} from {start_date} to present"
+        
+        # Format the result
+        result = f"## Stock data for {symbol} from {start_date} to present:\n\n"
+        result += data.to_string()
+        
+        # Add latest quote if available
+        try:
+            latest_quote = AlpacaUtils.get_latest_quote(symbol)
+            if latest_quote:
+                result += f"\n\n## Latest Quote for {symbol}:\n"
+                result += f"Bid: {latest_quote['bid_price']} ({latest_quote['bid_size']}), "
+                result += f"Ask: {latest_quote['ask_price']} ({latest_quote['ask_size']}), "
+                result += f"Time: {latest_quote['timestamp']}"
+        except Exception as quote_error:
+            result += f"\n\nCould not fetch latest quote: {str(quote_error)}"
+        
+        return result
+    except Exception as e:
+        return f"Error getting stock data for {symbol}: {str(e)}"
+
+def get_alpaca_data(
+    symbol: Annotated[str, "ticker symbol of the company"],
+    start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
+    end_date: Annotated[str, "End date in yyyy-mm-dd format"] = None,
+    timeframe: Annotated[str, "Timeframe for data: 1Min, 5Min, 15Min, 1Hour, 1Day"] = "1Day",
+) -> str:
+    """
+    Get stock data from Alpaca
+    Args:
+        symbol: ticker symbol of the company
+        start_date: Start date in yyyy-mm-dd format
+        end_date: End date in yyyy-mm-dd format (optional - if not provided, will fetch up to latest available data)
+        timeframe: Timeframe for data (1Min, 5Min, 15Min, 1Hour, 1Day)
+    Returns:
+        str: a report of the stock data
+    """
+    try:
+        # Get data from Alpaca
+        data = AlpacaUtils.get_stock_data(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            timeframe=timeframe
+        )
+        
+        if data.empty:
+            date_range = f"from {start_date}" + (f" to {end_date}" if end_date else " to present")
+            return f"No data found for {symbol} {date_range}"
+        
+        # Format the result
+        date_range = f"from {start_date}" + (f" to {end_date}" if end_date else " to present")
+        result = f"## Stock data for {symbol} {date_range}:\n\n"
+        result += data.to_string()
+        
+        # Add latest quote if available
+        try:
+            latest_quote = AlpacaUtils.get_latest_quote(symbol)
+            if latest_quote:
+                result += f"\n\n## Latest Quote for {symbol}:\n"
+                result += f"Bid: {latest_quote['bid_price']} ({latest_quote['bid_size']}), "
+                result += f"Ask: {latest_quote['ask_price']} ({latest_quote['ask_size']}), "
+                result += f"Time: {latest_quote['timestamp']}"
+        except Exception as quote_error:
+            result += f"\n\nCould not fetch latest quote: {str(quote_error)}"
+        
+        return result
+    except Exception as e:
+        return f"Error getting stock data for {symbol}: {str(e)}"
+
+
+def get_earnings_calendar(
+    ticker: Annotated[str, "Stock or crypto ticker symbol"],
+    start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
+    end_date: Annotated[str, "End date in yyyy-mm-dd format"],
+) -> str:
+    """
+    Retrieve earnings calendar data for stocks or major events for crypto.
+    For stocks: Shows earnings dates, EPS estimates vs actuals, revenue estimates vs actuals, and surprise analysis.
+    For crypto: Shows major protocol events, upgrades, and announcements that could impact price.
+    
+    Args:
+        ticker (str): Stock ticker (e.g. AAPL, TSLA) or crypto ticker (e.g. BTCUSD, ETH, SOL)
+        start_date (str): Start date in yyyy-mm-dd format
+        end_date (str): End date in yyyy-mm-dd format
+        
+    Returns:
+        str: Formatted earnings calendar data with estimates, actuals, and surprise analysis
+    """
+    
+    return get_earnings_calendar_data(ticker, start_date, end_date)
+
+
+def get_earnings_surprise_analysis(
+    ticker: Annotated[str, "Stock ticker symbol"],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    lookback_quarters: Annotated[int, "Number of quarters to analyze"] = 8,
+) -> str:
+    """
+    Analyze historical earnings surprises to identify patterns and trading implications.
+    Shows consistency of beats/misses, magnitude of surprises, and seasonal patterns.
+    
+    Args:
+        ticker (str): Stock ticker symbol, e.g. AAPL, TSLA
+        curr_date (str): Current date in yyyy-mm-dd format
+        lookback_quarters (int): Number of quarters to analyze (default 8 = ~2 years)
+        
+    Returns:
+        str: Analysis of earnings surprise patterns with trading implications
+    """
+    
+    return get_earnings_surprises_analysis(ticker, curr_date, lookback_quarters)
+
+
+def get_macro_analysis(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    lookback_days: Annotated[int, "Number of days to look back for data"] = 90,
+) -> str:
+    """
+    Retrieve comprehensive macro economic analysis including Fed funds, CPI, PPI, NFP, GDP, PMI, Treasury curve, VIX.
+    Provides economic indicators, yield curve analysis, Fed policy updates, and trading implications.
+    
+    Args:
+        curr_date (str): Current date in yyyy-mm-dd format
+        lookback_days (int): Number of days to look back for data (default 90)
+        
+    Returns:
+        str: Comprehensive macro economic analysis with trading implications
+    """
+    
+    return get_macro_economic_summary(curr_date)
+
+
+def get_economic_indicators(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    lookback_days: Annotated[int, "Number of days to look back for data"] = 90,
+) -> str:
+    """
+    Retrieve key economic indicators report including Fed funds, CPI, PPI, unemployment, NFP, GDP, PMI, VIX.
+    
+    Args:
+        curr_date (str): Current date in yyyy-mm-dd format
+        lookback_days (int): Number of days to look back for data (default 90)
+        
+    Returns:
+        str: Economic indicators report with analysis and interpretations
+    """
+    
+    return get_economic_indicators_report(curr_date, lookback_days)
+
+
+def get_yield_curve_analysis(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+) -> str:
+    """
+    Retrieve Treasury yield curve analysis including inversion signals and recession indicators.
+    
+    Args:
+        curr_date (str): Current date in yyyy-mm-dd format
+        
+    Returns:
+        str: Treasury yield curve data with inversion analysis
+    """
+    
+    return get_treasury_yield_curve(curr_date)

@@ -20,12 +20,34 @@ class SignalProcessor:
         Returns:
             Extracted decision (BUY, SELL, or HOLD)
         """
+        # First try deterministic extraction to avoid unnecessary LLM calls
+        content = full_signal.upper()
+
+        # Check for trading-mode keywords first (LONG / SHORT / NEUTRAL)
+        for action in ["LONG", "SHORT", "NEUTRAL"]:
+            pattern = f"FINAL TRANSACTION PROPOSAL: **{action}**"
+            if pattern in content:
+                return action
+
+        # Check for investment-mode keywords (BUY / SELL / HOLD)
+        for action in ["BUY", "SELL", "HOLD"]:
+            pattern = f"FINAL TRANSACTION PROPOSAL: **{action}**"
+            if pattern in content:
+                return action
+
+        # Fallback: simple keyword search in the last 100 characters
+        tail = content[-100:]
+        for action in ["LONG", "SHORT", "NEUTRAL", "BUY", "SELL", "HOLD"]:
+            if action in tail:
+                return action
+
+        # If deterministic parsing fails, let the LLM infer (default to BUY/SELL/HOLD)
         messages = [
             (
                 "system",
-                "You are an efficient assistant designed to analyze paragraphs or financial reports provided by a group of analysts. Your task is to extract the investment decision: SELL, BUY, or HOLD. Provide only the extracted decision (SELL, BUY, or HOLD) as your output, without adding any additional text or information.",
+                "You are an efficient assistant designed to analyze paragraphs or financial reports provided by a group of analysts. Your task is to extract the investment decision: SELL, BUY, HOLD, LONG, SHORT, or NEUTRAL. Provide only the extracted decision word as your output, without adding any additional text or information.",
             ),
             ("human", full_signal),
         ]
 
-        return self.quick_thinking_llm.invoke(messages).content
+        return self.quick_thinking_llm.invoke(messages).content.strip().upper()

@@ -12,22 +12,67 @@ from dateutil.relativedelta import relativedelta
 from langchain_openai import ChatOpenAI
 import tradingagents.dataflows.interface as interface
 from tradingagents.default_config import DEFAULT_CONFIG
-from langchain_core.messages import HumanMessage
+import json
+import time
+from functools import wraps
+
+
+def timing_wrapper(analyst_type):
+    """Decorator to add timing measurements to tool functions"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Start timing
+            start_time = time.time()
+            
+            # Prepare input summary (limit length for readability)
+            input_summary = {}
+            
+            # Handle both positional and keyword arguments
+            if args:
+                # For positional args, try to map to common parameter names
+                if len(args) >= 1:
+                    input_summary['arg1'] = args[0] if len(str(args[0])) <= 50 else f"{str(args[0])[:50]}..."
+                if len(args) >= 2:
+                    input_summary['arg2'] = args[1] if len(str(args[1])) <= 50 else f"{str(args[1])[:50]}..."
+                if len(args) >= 3:
+                    input_summary['arg3'] = args[2] if len(str(args[2])) <= 50 else f"{str(args[2])[:50]}..."
+            
+            # Add keyword arguments
+            for key, value in kwargs.items():
+                if isinstance(value, str) and len(value) > 50:
+                    input_summary[key] = f"{value[:50]}..."
+                else:
+                    input_summary[key] = value
+            
+            tool_name = func.__name__
+            print(f"[{analyst_type}] 🔧 Starting tool '{tool_name}' with inputs: {input_summary}")
+            
+            try:
+                # Execute the original function
+                result = func(*args, **kwargs)
+                
+                # Calculate execution time
+                elapsed = time.time() - start_time
+                print(f"[{analyst_type}] ✅ Tool '{tool_name}' completed in {elapsed:.2f}s")
+                
+                return result
+                
+            except Exception as e:
+                elapsed = time.time() - start_time
+                print(f"[{analyst_type}] ❌ Tool '{tool_name}' failed after {elapsed:.2f}s: {str(e)}")
+                raise  # Re-raise the exception
+                
+        return wrapper
+    return decorator
 
 
 def create_msg_delete():
     def delete_messages(state):
-        """Clear messages and add placeholder for Anthropic compatibility"""
+        """To prevent message history from overflowing, regularly clear message history after a stage of the pipeline is done"""
         messages = state["messages"]
-        
-        # Remove all messages
-        removal_operations = [RemoveMessage(id=m.id) for m in messages]
-        
-        # Add a minimal placeholder message
-        placeholder = HumanMessage(content="Continue")
-        
-        return {"messages": removal_operations + [placeholder]}
-    
+        return {"messages": [RemoveMessage(id=m.id) for m in messages]}
+
     return delete_messages
 
 
@@ -50,6 +95,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("NEWS")
     def get_reddit_news(
         curr_date: Annotated[str, "Date you want to get news for in yyyy-mm-dd format"],
     ) -> str:
@@ -67,6 +113,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("NEWS")
     def get_finnhub_news(
         ticker: Annotated[
             str,
@@ -99,6 +146,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("SOCIAL")
     def get_reddit_stock_info(
         ticker: Annotated[
             str,
@@ -121,48 +169,31 @@ class Toolkit:
 
     @staticmethod
     @tool
-    def get_YFin_data(
+    @timing_wrapper("MARKET")
+    def get_alpaca_data(
         symbol: Annotated[str, "ticker symbol of the company"],
         start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
         end_date: Annotated[str, "End date in yyyy-mm-dd format"],
+        timeframe: Annotated[str, "Timeframe for data: 1Min, 5Min, 15Min, 1Hour, 1Day"] = "1Day",
     ) -> str:
         """
-        Retrieve the stock price data for a given ticker symbol from Yahoo Finance.
+        Retrieve the stock price data for a given ticker symbol from Alpaca.
         Args:
             symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
             start_date (str): Start date in yyyy-mm-dd format
             end_date (str): End date in yyyy-mm-dd format
+            timeframe (str): Timeframe for data (1Min, 5Min, 15Min, 1Hour, 1Day)
         Returns:
             str: A formatted dataframe containing the stock price data for the specified ticker symbol in the specified date range.
         """
 
-        result_data = interface.get_YFin_data(symbol, start_date, end_date)
+        result_data = interface.get_alpaca_data(symbol, start_date, end_date, timeframe)
 
         return result_data
 
     @staticmethod
     @tool
-    def get_YFin_data_online(
-        symbol: Annotated[str, "ticker symbol of the company"],
-        start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
-        end_date: Annotated[str, "End date in yyyy-mm-dd format"],
-    ) -> str:
-        """
-        Retrieve the stock price data for a given ticker symbol from Yahoo Finance.
-        Args:
-            symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
-            start_date (str): Start date in yyyy-mm-dd format
-            end_date (str): End date in yyyy-mm-dd format
-        Returns:
-            str: A formatted dataframe containing the stock price data for the specified ticker symbol in the specified date range.
-        """
-
-        result_data = interface.get_YFin_data_online(symbol, start_date, end_date)
-
-        return result_data
-
-    @staticmethod
-    @tool
+    @timing_wrapper("MARKET")
     def get_stockstats_indicators_report(
         symbol: Annotated[str, "ticker symbol of the company"],
         indicator: Annotated[
@@ -192,6 +223,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("MARKET")
     def get_stockstats_indicators_report_online(
         symbol: Annotated[str, "ticker symbol of the company"],
         indicator: Annotated[
@@ -269,6 +301,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("FUNDAMENTALS")
     def get_simfin_balance_sheet(
         ticker: Annotated[str, "ticker symbol"],
         freq: Annotated[
@@ -317,6 +350,26 @@ class Toolkit:
 
     @staticmethod
     @tool
+    def get_coindesk_news(
+        ticker: Annotated[str, "Ticker symbol, e.g. 'BTCUSD', 'ETH', etc."],
+        num_sentences: Annotated[int, "Number of sentences to include from news body."] = 5,
+    ):
+        """
+        Retrieve news for a cryptocurrency.
+        This function checks if the ticker is a crypto pair (like BTCUSD) and extracts the base currency.
+        Then it fetches news for that cryptocurrency from CryptoCompare.
+
+        Args:
+            ticker (str): Ticker symbol for the cryptocurrency.
+            num_sentences (int): Number of sentences to extract from the body of each news article.
+
+        Returns:
+            str: Formatted string containing news.
+        """
+        return interface.get_coindesk_news(ticker, num_sentences)
+
+    @staticmethod
+    @tool
     def get_simfin_income_stmt(
         ticker: Annotated[str, "ticker symbol"],
         freq: Annotated[
@@ -343,6 +396,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("NEWS")
     def get_google_news(
         query: Annotated[str, "Query to search with"],
         curr_date: Annotated[str, "Curr date in yyyy-mm-dd format"],
@@ -363,6 +417,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("SOCIAL")
     def get_stock_news_openai(
         ticker: Annotated[str, "the company's ticker"],
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
@@ -382,6 +437,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("NEWS")
     def get_global_news_openai(
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     ):
@@ -399,6 +455,7 @@ class Toolkit:
 
     @staticmethod
     @tool
+    @timing_wrapper("FUNDAMENTALS")
     def get_fundamentals_openai(
         ticker: Annotated[str, "the company's ticker"],
         curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
@@ -417,3 +474,173 @@ class Toolkit:
         )
 
         return openai_fundamentals_results
+
+    @staticmethod
+    @tool
+    def get_earnings_calendar(
+        ticker: Annotated[str, "Stock or crypto ticker symbol"],
+        start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
+        end_date: Annotated[str, "End date in yyyy-mm-dd format"],
+    ) -> str:
+        """
+        Retrieve earnings calendar data for stocks or major events for crypto.
+        For stocks: Shows earnings dates, EPS estimates vs actuals, revenue estimates vs actuals, and surprise analysis.
+        For crypto: Shows major protocol events, upgrades, and announcements that could impact price.
+        
+        Args:
+            ticker (str): Stock ticker (e.g. AAPL, TSLA) or crypto ticker (e.g. BTCUSD, ETH, SOL)
+            start_date (str): Start date in yyyy-mm-dd format
+            end_date (str): End date in yyyy-mm-dd format
+            
+        Returns:
+            str: Formatted earnings calendar data with estimates, actuals, and surprise analysis
+        """
+        
+        earnings_calendar_results = interface.get_earnings_calendar(
+            ticker, start_date, end_date
+        )
+        
+        return earnings_calendar_results
+
+    @staticmethod
+    @tool
+    def get_earnings_surprise_analysis(
+        ticker: Annotated[str, "Stock ticker symbol"],
+        curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+        lookback_quarters: Annotated[int, "Number of quarters to analyze"] = 8,
+    ) -> str:
+        """
+        Analyze historical earnings surprises to identify patterns and trading implications.
+        Shows consistency of beats/misses, magnitude of surprises, and seasonal patterns.
+        
+        Args:
+            ticker (str): Stock ticker symbol, e.g. AAPL, TSLA
+            curr_date (str): Current date in yyyy-mm-dd format
+            lookback_quarters (int): Number of quarters to analyze (default 8 = ~2 years)
+            
+        Returns:
+            str: Analysis of earnings surprise patterns with trading implications
+        """
+        
+        earnings_surprise_results = interface.get_earnings_surprise_analysis(
+            ticker, curr_date, lookback_quarters
+        )
+        
+        return earnings_surprise_results
+
+    @staticmethod
+    @tool
+    @timing_wrapper("MACRO")
+    def get_macro_analysis(
+        curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+        lookback_days: Annotated[int, "Number of days to look back for data"] = 90,
+    ) -> str:
+        """
+        Retrieve comprehensive macro economic analysis including Fed funds, CPI, PPI, NFP, GDP, PMI, Treasury curve, VIX.
+        Provides economic indicators, yield curve analysis, and Fed policy updates with trading implications.
+        
+        Args:
+            curr_date (str): Current date in yyyy-mm-dd format
+            lookback_days (int): Number of days to look back for data (default 90)
+            
+        Returns:
+            str: Comprehensive macro economic analysis with trading implications
+        """
+        
+        macro_analysis_results = interface.get_macro_analysis(
+            curr_date, lookback_days
+        )
+        
+        return macro_analysis_results
+
+    @staticmethod
+    @tool
+    def get_economic_indicators(
+        curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+        lookback_days: Annotated[int, "Number of days to look back for data"] = 90,
+    ) -> str:
+        """
+        Retrieve key economic indicators report including Fed funds, CPI, PPI, unemployment, NFP, GDP, PMI, VIX.
+        
+        Args:
+            curr_date (str): Current date in yyyy-mm-dd format
+            lookback_days (int): Number of days to look back for data (default 90)
+            
+        Returns:
+            str: Economic indicators report with analysis and interpretations
+        """
+        
+        economic_indicators_results = interface.get_economic_indicators(
+            curr_date, lookback_days
+        )
+        
+        return economic_indicators_results
+
+    @staticmethod
+    @tool
+    def get_yield_curve_analysis(
+        curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    ) -> str:
+        """
+        Retrieve Treasury yield curve analysis including inversion signals and recession indicators.
+        
+        Args:
+            curr_date (str): Current date in yyyy-mm-dd format
+            
+        Returns:
+            str: Treasury yield curve data with inversion analysis
+        """
+        
+        yield_curve_results = interface.get_yield_curve_analysis(curr_date)
+        
+        return yield_curve_results
+
+    @staticmethod
+    @tool
+    def get_defillama_fundamentals(
+        ticker: Annotated[str, "Crypto ticker symbol (without USD/USDT suffix)"],
+        lookback_days: Annotated[int, "Number of days to look back for data"] = 30,
+    ):
+        """
+        Retrieve fundamental data for a cryptocurrency from DeFi Llama.
+        This includes TVL (Total Value Locked), TVL change over lookback period,
+        fees collected, and revenue data.
+        
+        Args:
+            ticker (str): Crypto ticker symbol (e.g., BTC, ETH, UNI)
+            lookback_days (int): Number of days to look back for data
+            
+        Returns:
+            str: A markdown-formatted report of crypto fundamentals from DeFi Llama
+        """
+        
+        defillama_results = interface.get_defillama_fundamentals(
+            ticker, lookback_days
+        )
+        
+        return defillama_results
+
+    @staticmethod
+    @tool
+    def get_alpaca_data_report(
+        symbol: Annotated[str, "ticker symbol of the company"],
+        curr_date: Annotated[str, "Start date in yyyy-mm-dd format"],
+        look_back_days: Annotated[int, "how many days to look back"],
+        timeframe: Annotated[str, "Timeframe for data: 1Min, 5Min, 15Min, 1Hour, 1Day"] = "1Day",
+    ) -> str:
+        """
+        Retrieve Alpaca data for a given ticker symbol.
+        Args:
+            symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
+            curr_date (str): The current trading date in YYYY-mm-dd format
+            look_back_days (int): How many days to look back
+            timeframe (str): Timeframe for data (1Min, 5Min, 15Min, 1Hour, 1Day)
+        Returns:
+            str: A formatted dataframe containing the Alpaca data for the specified ticker symbol.
+        """
+
+        result_alpaca = interface.get_alpaca_data_window(
+            symbol, curr_date, look_back_days, timeframe
+        )
+
+        return result_alpaca

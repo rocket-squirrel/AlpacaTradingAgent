@@ -1,9 +1,9 @@
 import pandas as pd
-import yfinance as yf
 from stockstats import wrap
 from typing import Annotated
 import os
 from .config import get_config
+from .alpaca_utils import AlpacaUtils
 
 
 class StockstatsUtils:
@@ -27,18 +27,21 @@ class StockstatsUtils:
     ):
         df = None
         data = None
+        
+        # Sanitize symbol for filename (replace / with _)
+        safe_symbol = symbol.replace('/', '_')
 
         if not online:
             try:
                 data = pd.read_csv(
                     os.path.join(
                         data_dir,
-                        f"{symbol}-YFin-data-2015-01-01-2025-03-25.csv",
+                        f"{safe_symbol}-Alpaca-data-2015-01-01-2025-03-25.csv",
                     )
                 )
                 df = wrap(data)
             except FileNotFoundError:
-                raise Exception("Stockstats fail: Yahoo Finance data not fetched yet!")
+                raise Exception("Stockstats fail: Alpaca data not fetched yet!")
         else:
             # Get today's date as YYYY-mm-dd to add to cache
             today_date = pd.Timestamp.today()
@@ -55,27 +58,40 @@ class StockstatsUtils:
 
             data_file = os.path.join(
                 config["data_cache_dir"],
-                f"{symbol}-YFin-data-{start_date}-{end_date}.csv",
+                f"{safe_symbol}-Alpaca-data-{start_date}-{end_date}.csv",
             )
 
             if os.path.exists(data_file):
                 data = pd.read_csv(data_file)
                 data["Date"] = pd.to_datetime(data["Date"])
             else:
-                data = yf.download(
-                    symbol,
-                    start=start_date,
-                    end=end_date,
-                    multi_level_index=False,
-                    progress=False,
-                    auto_adjust=True,
+                # Use Alpaca to get data
+                data = AlpacaUtils.get_stock_data(
+                    symbol=symbol,  # Use original symbol for API call
+                    start_date=start_date,
+                    end_date=end_date,
+                    timeframe="1Day"
                 )
-                data = data.reset_index()
-                data.to_csv(data_file, index=False)
+                
+                # Rename columns to match expected format for stockstats
+                if not data.empty and 'timestamp' in data.columns:
+                    data = data.rename(columns={
+                        'timestamp': 'Date',
+                        'open': 'Open',
+                        'high': 'High',
+                        'low': 'Low',
+                        'close': 'Close',
+                        'volume': 'Volume'
+                    })
+                
+                # Save to cache
+                if not data.empty:
+                    data.to_csv(data_file, index=False)
 
             df = wrap(data)
-            df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
-            curr_date = curr_date.strftime("%Y-%m-%d")
+            if 'Date' in df.columns:
+                df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+                curr_date = curr_date.strftime("%Y-%m-%d")
 
         df[indicator]  # trigger stockstats to calculate the indicator
         matching_rows = df[df["Date"].str.startswith(curr_date)]

@@ -2,7 +2,6 @@ typing-extensions
 langchain-openai
 langchain-experimental
 pandas
-yfinance
 praw
 feedparser
 stockstats
@@ -22,5 +21,10 @@ redis
 chainlit
 rich
 questionary
-langchain_anthropic
-langchain-google-genai
+python-dotenv
+gradio
+plotly
+dash>=3.0.0
+dash-bootstrap-components>=2.0.0
+flask>=3.0.0
+alpaca-py>=0.8.2

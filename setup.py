@@ -21,15 +21,17 @@ setup(
         "pandas>=2.0.0",
         "praw>=7.7.0",
         "stockstats>=0.5.4",
-        "yfinance>=0.2.31",
         "typer>=0.9.0",
         "rich>=13.0.0",
         "questionary>=2.0.1",
+        "gradio>=4.0.0",
+        "plotly>=5.18.0",
     ],
     python_requires=">=3.10",
     entry_points={
         "console_scripts": [
             "tradingagents=cli.main:app",
+            "tradingagents-web=web_ui:main",
         ],
     },
     classifiers=[
