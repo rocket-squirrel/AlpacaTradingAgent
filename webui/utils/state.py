@@ -20,6 +20,10 @@ class AppState:
         self.current_session_id = None
         self.session_start_time = None
         
+        # New: Proper tracking lists similar to CLI
+        self.tool_calls_log = []  # Store actual tool calls for proper counting
+        self.llm_calls_log = []   # Store actual LLM calls for proper counting
+        
         # Loop configuration
         self.loop_enabled = False
         self.loop_symbols = []
@@ -198,6 +202,9 @@ class AppState:
         self.analysis_trace = []
         self.tool_calls_count = 0
         self.llm_calls_count = 0
+        # Reset the new tracking lists
+        self.tool_calls_log = []
+        self.llm_calls_log = []
         self.generated_reports_count = 0
         # Reset session tracking
         self.current_session_id = None
@@ -268,6 +275,9 @@ class AppState:
         self.analysis_trace = []
         self.tool_calls_count = 0
         self.llm_calls_count = 0
+        # Reset the new tracking lists
+        self.tool_calls_log = []
+        self.llm_calls_log = []
         self.generated_reports_count = 0
         self.needs_ui_update = True
 
@@ -321,6 +331,14 @@ class AppState:
         self.last_trade_time = time.time()
         self.alpaca_refresh_needed = True
         print("[STATE] Trading event signaled - Alpaca refresh needed")
+    
+    def update_reports_count(self):
+        """Update the generated reports count across all symbols."""
+        total_reports = 0
+        for symbol_state in self.symbol_states.values():
+            reports = symbol_state.get("current_reports", {})
+            total_reports += sum(1 for content in reports.values() if content is not None and str(content).strip())
+        self.generated_reports_count = total_reports
 
     def is_all_symbols_complete(self):
         """Check if all symbols in the current analysis are complete."""
@@ -445,11 +463,13 @@ class AppState:
                     state.setdefault("report_timestamps", {})[report_type] = current_time
                     state[update_count_key] = current_count + 1
                     
-                    # Count only non-empty reports
+                    # Count unique non-empty reports across all symbols
                     if new_report:
-                        self.generated_reports_count += 1
+                        self.update_reports_count()
+                        
                         # Add debug logging for all analyst reports
                         print(f"[STATE - {analyzing_symbol}] ✅ Updated {report_type} with content length: {len(new_report)} (update #{current_count + 1})")
+                        print(f"[STATE - {analyzing_symbol}] 📊 Total Generated Reports: {self.generated_reports_count}")
                         
                         # Special debugging for macro report (simplified)
                         if report_type == "macro_report":
@@ -507,6 +527,7 @@ class AppState:
                 if state["agent_statuses"].get("Bull Researcher") == "pending":
                     self.update_agent_status("Bull Researcher", "in_progress", analyzing_symbol)
                 state["current_reports"]["bull_report"] = debate_state["bull_history"]
+                self.update_reports_count()
                 ui_update_needed = True
             
             # Bear researcher
@@ -514,6 +535,7 @@ class AppState:
                 if state["agent_statuses"].get("Bear Researcher") == "pending":
                     self.update_agent_status("Bear Researcher", "in_progress", analyzing_symbol)
                 state["current_reports"]["bear_report"] = debate_state["bear_history"]
+                self.update_reports_count()
                 ui_update_needed = True
             
             # Research manager
@@ -529,6 +551,7 @@ class AppState:
         # Trader plan
         if "trader_investment_plan" in chunk and chunk["trader_investment_plan"]:
             state["current_reports"]["trader_investment_plan"] = chunk["trader_investment_plan"]
+            self.update_reports_count()
             self.update_agent_status("Trader", "completed", analyzing_symbol)
             self.update_agent_status("Risky Analyst", "in_progress", analyzing_symbol)
             ui_update_needed = True
@@ -549,6 +572,7 @@ class AppState:
                 if risky_content.startswith("Risky Analyst: "):
                     risky_content = risky_content[15:]  # Remove "Risky Analyst: " prefix
                 state["current_reports"]["risky_report"] = risky_content
+                self.update_reports_count()
                 # print(f"[STATE - {self.current_symbol}] Updated risky_report with content length: {len(risky_content)}")
                 ui_update_needed = True
             
@@ -561,6 +585,7 @@ class AppState:
                 if safe_content.startswith("Safe Analyst: "):
                     safe_content = safe_content[14:]  # Remove "Safe Analyst: " prefix
                 state["current_reports"]["safe_report"] = safe_content
+                self.update_reports_count()
                 # print(f"[STATE - {self.current_symbol}] Updated safe_report with content length: {len(safe_content)}")
                 ui_update_needed = True
             
@@ -573,6 +598,7 @@ class AppState:
                 if neutral_content.startswith("Neutral Analyst: "):
                     neutral_content = neutral_content[17:]  # Remove "Neutral Analyst: " prefix
                 state["current_reports"]["neutral_report"] = neutral_content
+                self.update_reports_count()
                 # print(f"[STATE - {self.current_symbol}] Updated neutral_report with content length: {len(neutral_content)}")
                 ui_update_needed = True
             
@@ -619,14 +645,37 @@ class AppState:
                 
                 ui_update_needed = True
         
-        # Update counts based on messages
+        # Proper tracking of LLM calls and tool calls (similar to CLI implementation)
         if "messages" in chunk and len(chunk.get("messages", [])) > 0:
-            self.llm_calls_count += 1
-            ui_update_needed = True
-        
-        # Approximation of tool calls
-        if any(key for key in chunk.keys() if key.startswith("tool_")):
-            self.tool_calls_count += 1
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            
+            # Process each message in the chunk
+            for message in chunk["messages"]:
+                # Extract message content and type
+                if hasattr(message, "content"):
+                    content = message.content
+                    msg_type = "Reasoning"  # LLM reasoning calls
+                else:
+                    content = str(message)
+                    msg_type = "System"
+                
+                # Add to LLM calls log
+                self.llm_calls_log.append((timestamp, msg_type, content))
+                
+                # Note: Tool calls are now tracked directly in agent_utils.py timing_wrapper
+                # No need to parse them from message chunks
+            
+            # Update LLM calls count (tool calls are tracked directly in agent_utils.py)
+            self.llm_calls_count = len([call for call in self.llm_calls_log if call[1] == "Reasoning"])
+            
+            # Tool calls count is updated directly in timing_wrapper, no need to recalculate here
+            
+            # Debug output for message processing
+            if len(chunk.get("messages", [])) > 0:
+                print(f"[STATE] Processed {len(chunk['messages'])} messages")
+                print(f"[STATE] Updated counts - Tool Calls: {self.tool_calls_count}, LLM Calls: {self.llm_calls_count}")
+            
             ui_update_needed = True
                 
         # Set the first analyst to in_progress when analysis starts (detect initial human message)

@@ -48,6 +48,19 @@ def timing_wrapper(analyst_type):
             tool_name = func.__name__
             print(f"[{analyst_type}] 🔧 Starting tool '{tool_name}' with inputs: {input_summary}")
             
+            # Notify the state management system of tool call execution
+            try:
+                from webui.utils.state import app_state
+                import datetime
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                app_state.tool_calls_log.append((timestamp, tool_name, input_summary))
+                app_state.tool_calls_count = len(app_state.tool_calls_log)
+                app_state.needs_ui_update = True
+                print(f"[TOOL TRACKER] Registered tool call: {tool_name} (Total: {app_state.tool_calls_count})")
+            except Exception as e:
+                # Don't break tool execution if state tracking fails
+                print(f"[TOOL TRACKER] Failed to track tool call: {e}")
+            
             try:
                 # Execute the original function
                 result = func(*args, **kwargs)
