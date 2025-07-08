@@ -8,6 +8,14 @@ from ..utils.agent_trading_modes import (
 )
 from tradingagents.dataflows.alpaca_utils import AlpacaUtils
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_risk_manager(llm, memory, config=None):
     def risk_manager_node(state) -> dict:
@@ -171,6 +179,9 @@ Deliverables:
 ---
 
 Focus on actionable insights and continuous improvement. Build on past lessons, critically evaluate all perspectives, and ensure each decision advances better outcomes."""
+
+        # Capture the COMPLETE prompt that gets sent to the LLM
+        capture_agent_prompt("final_trade_decision", prompt, company_name)
 
         response = llm.invoke(prompt)
 

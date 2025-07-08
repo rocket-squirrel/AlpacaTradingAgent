@@ -3,6 +3,14 @@ from langchain_core.messages import AIMessage, ToolMessage
 import time
 import json
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_news_analyst(llm, toolkit):
     def news_analyst_node(state):
@@ -29,23 +37,23 @@ def create_news_analyst(llm, toolkit):
 
         system_message = (
             "You are an EOD TRADING news analyst specializing in identifying news events and market developments that could drive overnight and next-day price movements. Focus on after-hours catalysts and sentiment shifts that create EOD trading opportunities."
-            + " **EOD TRADING NEWS ANALYSIS:** "
-            + "1. **Overnight Catalyst Identification:** After-hours events, announcements, data releases that could create next-day gaps or moves "
-            + "2. **End-of-Day Sentiment Shifts:** Changes in market narrative, analyst sentiment, or sector rotation trends affecting overnight positions "
-            + "3. **Event Timing:** Specific dates/times for earnings, FDA approvals, product launches, economic data that EOD traders should know "
-            + "4. **After-Hours Momentum Drivers:** Breaking news creating overnight price momentum suitable for next-day positioning "
-            + "5. **Overnight Risk Events:** Geopolitical developments, Fed decisions, sector-specific risks that could impact overnight positions "
-            + "6. **Pre-Market Analysis:** How similar companies are reacting to news - sector momentum and relative strength patterns for next day "
-            + "**ANALYSIS PRIORITIES:** "
-            + "- Focus on actionable news with clear timing implications for overnight trades "
-            + "- Identify both bullish and bearish catalysts affecting next trading day "
-            + "- Assess news impact magnitude (minor <2%, moderate 2-5%, major >5% overnight/next-day moves) "
-            + "- Consider news durability (will impact persist through next day or just overnight?) "
-            + "- Analyze market reaction patterns to similar news in overnight/pre-market sessions "
-            + "**AVOID:** Generic market commentary, long-term trends, intraday noise. Focus on EOD-relevant news with overnight impact potential."
+            + " **EOD TRADING NEWS ANALYSIS:** \n"
+            + "1. **Overnight Catalyst Identification:** After-hours events, announcements, data releases that could create next-day gaps or moves \n"
+            + "2. **End-of-Day Sentiment Shifts:** Changes in market narrative, analyst sentiment, or sector rotation trends affecting overnight positions \n"
+            + "3. **Event Timing:** Specific dates/times for earnings, FDA approvals, product launches, economic data that EOD traders should know \n"
+            + "4. **After-Hours Momentum Drivers:** Breaking news creating overnight price momentum suitable for next-day positioning \n"
+            + "5. **Overnight Risk Events:** Geopolitical developments, Fed decisions, sector-specific risks that could impact overnight positions \n"
+            + "6. **Pre-Market Analysis:** How similar companies are reacting to news - sector momentum and relative strength patterns for next day \n"
+            + "**ANALYSIS PRIORITIES:** \n"
+            + "- Focus on actionable news with clear timing implications for overnight trades \n"
+            + "- Identify both bullish and bearish catalysts affecting next trading day \n"
+            + "- Assess news impact magnitude (minor <2%, moderate 2-5%, major >5% overnight/next-day moves) \n"
+            + "- Consider news durability (will impact persist through next day or just overnight?) \n"
+            + "- Analyze market reaction patterns to similar news in overnight/pre-market sessions \n"
+            + "**AVOID:** Generic market commentary, long-term trends, intraday noise. Focus on EOD-relevant news with overnight impact potential.\n"
             + """ Make sure to append a Markdown table at the end organizing:
 | News Event | Date/Time | Impact Level | Price Direction | EOD Trading Implication |
-|------------|-----------|--------------|----------------|------------------------|
+|------------|-----------|--------------|----------------|------------------------|\n
 | [Specific Event] | [Date/Time] | [High/Med/Low] | [Bullish/Bearish/Neutral] | [Entry/Exit/Hold Strategy] |
 
 Provide specific, actionable news analysis for EOD trading decisions with clear timing and impact assessment."""
@@ -72,6 +80,30 @@ Provide specific, actionable news analysis for EOD trading decisions with clear 
         prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+
+        # Capture the COMPLETE resolved prompt that gets sent to the LLM
+        try:
+            # Get the formatted messages with all variables resolved
+            messages_history = list(state["messages"])
+            formatted_messages = prompt.format_messages(messages=messages_history)
+            
+            # Extract the complete system message (first message)
+            if formatted_messages and hasattr(formatted_messages[0], 'content'):
+                complete_prompt = formatted_messages[0].content
+            else:
+                # Fallback: manually construct the complete prompt
+                tool_names_str = ", ".join([tool.name for tool in tools])
+                complete_prompt = f"""You are a helpful AI assistant, collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to fully answer, that's OK; another assistant with different tools will help where you left off. Execute what you can to make progress. If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable, prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop. You have access to the following tools: {tool_names_str}.
+
+{system_message}
+
+For your reference, the current date is {current_date}. We are looking at the ticekr: {ticker}"""
+            
+            capture_agent_prompt("news_report", complete_prompt, ticker)
+        except Exception as e:
+            print(f"[NEWS] Warning: Could not capture complete prompt: {e}")
+            # Fallback to system message only
+            capture_agent_prompt("news_report", system_message, ticker)
 
         chain = prompt | llm.bind_tools(tools)
         

@@ -164,6 +164,23 @@ class AppState:
                 "portfolio_decision": None,
                 "final_trade_decision": None
             },
+            "agent_prompts": {
+                "market_report": None,
+                "sentiment_report": None,
+                "news_report": None,
+                "fundamentals_report": None,
+                "macro_report": None,
+                "bull_report": None,
+                "bear_report": None,
+                "research_manager_report": None,
+                "investment_plan": None, 
+                "trader_investment_plan": None,
+                "risky_report": None,
+                "safe_report": None,
+                "neutral_report": None,
+                "portfolio_decision": None,
+                "final_trade_decision": None
+            },
             "investment_debate_state": None,
             "analysis_complete": False,
             "analysis_results": None,
@@ -191,6 +208,26 @@ class AppState:
                     state["agent_statuses"][agent] = status
                     print(f"[STATE - {symbol}] Updated {agent} status to {status}")
                     self.needs_ui_update = True
+
+    def store_agent_prompt(self, report_type, prompt_text, symbol=None):
+        """Store the prompt used by an agent for a specific report type."""
+        if symbol is None:
+            symbol = self.analyzing_symbol or self.current_symbol
+            
+        state = self.get_state(symbol)
+        if state and "agent_prompts" in state:
+            state["agent_prompts"][report_type] = prompt_text
+            print(f"[STATE - {symbol}] Stored prompt for {report_type} ({len(prompt_text)} chars)")
+
+    def get_agent_prompt(self, report_type, symbol=None):
+        """Get the prompt used by an agent for a specific report type."""
+        if symbol is None:
+            symbol = self.current_symbol
+            
+        state = self.get_state(symbol)
+        if state and "agent_prompts" in state:
+            return state["agent_prompts"].get(report_type)
+        return None
 
     def reset(self):
         """Reset the application state for all symbols."""
@@ -229,6 +266,22 @@ class AppState:
                 "analysis_running": False,
                 "analysis_complete": False,
                 "current_reports": {
+                    "market_report": None,
+                    "sentiment_report": None,
+                    "news_report": None,
+                    "fundamentals_report": None,
+                    "macro_report": None,
+                    "bull_report": None,
+                    "bear_report": None,
+                    "research_manager_report": None,
+                    "trader_investment_plan": None,
+                    "risky_report": None,
+                    "safe_report": None,
+                    "neutral_report": None,
+                    "portfolio_decision": None,
+                    "final_trade_decision": None
+                },
+                "agent_prompts": {
                     "market_report": None,
                     "sentiment_report": None,
                     "news_report": None,

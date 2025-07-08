@@ -566,7 +566,7 @@ def get_stock_news_openai(ticker, curr_date):
                              f"5. Summary table with key metrics"
                 }
             ],
-            temperature=0.7,
+            temperature=0.2,
             max_tokens=3000
         )
 
@@ -609,7 +609,7 @@ def get_global_news_openai(curr_date):
                              f"6. Summary table with key events and impact levels"
                 }
             ],
-            temperature=0.7,
+            temperature=0.2,
             max_tokens=3000
         )
 
@@ -655,7 +655,7 @@ def get_fundamentals_openai(ticker, curr_date):
                              f"Format the analysis professionally with clear sections and include a summary table at the end."
                 }
             ],
-            temperature=0.7,
+            temperature=0.2,
             max_tokens=3000
         )
 
@@ -773,21 +773,84 @@ def get_alpaca_data(
             date_range = f"from {start_date}" + (f" to {end_date}" if end_date else " to present")
             return f"No data found for {symbol} {date_range}"
         
+        # Create a copy for formatting
+        df_formatted = data.copy()
+        
+        # Format timestamp to be more readable (convert to date only for daily data)
+        if timeframe == "1Day":
+            df_formatted['date'] = pd.to_datetime(df_formatted['timestamp']).dt.strftime('%Y-%m-%d')
+        else:
+            df_formatted['date'] = pd.to_datetime(df_formatted['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+        
+        # Reorder columns for better readability
+        columns_order = ['date', 'open', 'high', 'low', 'close', 'volume', 'trade_count', 'vwap']
+        available_columns = [col for col in columns_order if col in df_formatted.columns]
+        df_display = df_formatted[available_columns].copy()
+        
+        # Round price columns for better readability
+        price_columns = ['open', 'high', 'low', 'close', 'vwap']
+        for col in price_columns:
+            if col in df_display.columns:
+                df_display[col] = df_display[col].round(2)
+        
+        # Format volume with thousands separators
+        if 'volume' in df_display.columns:
+            df_display['volume'] = df_display['volume'].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "N/A")
+        
+        if 'trade_count' in df_display.columns:
+            df_display['trade_count'] = df_display['trade_count'].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "N/A")
+        
+        # Calculate some key metrics
+        if len(df_formatted) > 1:
+            current_close = df_formatted.iloc[-1]['close']
+            previous_close = df_formatted.iloc[-2]['close']
+            daily_change = current_close - previous_close
+            daily_change_pct = (daily_change / previous_close) * 100
+            
+            current_volume = df_formatted.iloc[-1]['volume']
+            avg_volume = df_formatted['volume'].mean()
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+        else:
+            daily_change = daily_change_pct = volume_ratio = 0
+            current_close = df_formatted.iloc[0]['close'] if not df_formatted.empty else 0
+        
         # Format the result
         date_range = f"from {start_date}" + (f" to {end_date}" if end_date else " to present")
-        result = f"## Stock data for {symbol} {date_range}:\n\n"
-        result += data.to_string()
+        result = f"## Stock Data for {symbol} {date_range}:\n\n"
+        result += df_display.to_string(index=False)
+        
+        # Add key metrics summary
+        if len(df_formatted) > 1:
+            result += f"\n\n## Key EOD Trading Metrics:\n"
+            result += f"Current Close: ${current_close:.2f}\n"
+            result += f"Daily Change: ${daily_change:.2f} ({daily_change_pct:+.2f}%)\n"
+            result += f"Volume vs Avg: {volume_ratio:.2f}x ({int(current_volume):,} vs {int(avg_volume):,})\n"
+            
+            # Add daily range info
+            latest_data = df_formatted.iloc[-1]
+            daily_range = latest_data['high'] - latest_data['low']
+            range_pct = (daily_range / latest_data['close']) * 100
+            result += f"Daily Range: ${latest_data['low']:.2f} - ${latest_data['high']:.2f} ({range_pct:.2f}%)\n"
         
         # Add latest quote if available
         try:
             latest_quote = AlpacaUtils.get_latest_quote(symbol)
             if latest_quote:
-                result += f"\n\n## Latest Quote for {symbol}:\n"
-                result += f"Bid: {latest_quote['bid_price']} ({latest_quote['bid_size']}), "
-                result += f"Ask: {latest_quote['ask_price']} ({latest_quote['ask_size']}), "
-                result += f"Time: {latest_quote['timestamp']}"
+                result += f"\n## Latest Real-Time Quote:\n"
+                result += f"Bid: ${latest_quote['bid_price']:.2f} (Size: {int(latest_quote['bid_size']):,})\n"
+                result += f"Ask: ${latest_quote['ask_price']:.2f} (Size: {int(latest_quote['ask_size']):,})\n"
+                result += f"Spread: ${float(latest_quote['ask_price']) - float(latest_quote['bid_price']):.2f}\n"
+                
+                # Calculate quote vs close difference if we have close data
+                if not data.empty:
+                    mid_quote = (float(latest_quote['bid_price']) + float(latest_quote['ask_price'])) / 2
+                    last_close = data.iloc[-1]['close']
+                    after_hours_change = mid_quote - last_close
+                    after_hours_pct = (after_hours_change / last_close) * 100
+                    result += f"After-Hours Move: ${after_hours_change:+.2f} ({after_hours_pct:+.2f}%)\n"
+                    
         except Exception as quote_error:
-            result += f"\n\nCould not fetch latest quote: {str(quote_error)}"
+            result += f"\n\nNote: Real-time quote unavailable: {str(quote_error)}"
         
         return result
     except Exception as e:

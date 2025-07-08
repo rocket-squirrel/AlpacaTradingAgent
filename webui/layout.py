@@ -98,6 +98,60 @@ def create_main_layout():
             *create_intervals(),
             *create_stores(),
             
+            # Client-side script to handle iframe messages for prompt modal
+            html.Script("""
+                window.addEventListener('message', function(event) {
+                    if (event.data && event.data.type === 'showPrompt') {
+                        // Find and trigger the appropriate show prompt button
+                        const buttons = document.querySelectorAll('[id*="show-prompt-"]');
+                        const reportType = event.data.reportType;
+                        
+                        // Find the button that matches this report type
+                        let targetButton = null;
+                        for (let button of buttons) {
+                            const buttonId = button.getAttribute('id');
+                            if (buttonId && buttonId.includes(reportType)) {
+                                targetButton = button;
+                                break;
+                            }
+                        }
+                        
+                        // If no direct match, try pattern matching
+                        if (!targetButton) {
+                            for (let button of buttons) {
+                                const buttonData = button.getAttribute('data-dash-props');
+                                if (buttonData && buttonData.includes(reportType)) {
+                                    targetButton = button;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Trigger the button click if found
+                        if (targetButton) {
+                            targetButton.click();
+                        } else {
+                            console.log('Could not find button for:', reportType);
+                            // Fallback: trigger any show prompt button and set content manually
+                            const anyPromptBtn = document.querySelector('[id*="show-prompt-"]');
+                            if (anyPromptBtn) {
+                                anyPromptBtn.click();
+                                // Try to set the modal content directly after a short delay
+                                setTimeout(() => {
+                                    const modalTitle = document.querySelector('#prompt-modal-title');
+                                    const modalContent = document.querySelector('#prompt-modal-content');
+                                    if (modalTitle) modalTitle.textContent = event.data.title;
+                                    if (modalContent) {
+                                        // This will be filled by the callback, but we can try to trigger it
+                                        console.log('Showing prompt for:', reportType);
+                                    }
+                                }, 100);
+                            }
+                        }
+                    }
+                });
+            """),
+            
             # Main content
             header,
             alpaca_account_card,

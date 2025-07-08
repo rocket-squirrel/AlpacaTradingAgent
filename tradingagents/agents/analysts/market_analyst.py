@@ -3,6 +3,14 @@ from langchain_core.messages import AIMessage, ToolMessage
 import time
 import json
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_market_analyst(llm, toolkit):
 
@@ -72,7 +80,7 @@ Categories and Indicators for EOD TRADING:
 
 Select indicators that provide **EOD-specific** insights. Prioritize daily momentum, trend strength, and daily support/resistance levels over intraday scalping or long-term investment metrics. Always analyze from an **EOD trader's perspective** focusing on overnight positioning.
 
-When you call tools, use **exact** indicator names (case-sensitive). Always call `get_alpaca_data_report` first for price data, then compute EOD-relevant indicators. Provide specific EOD trading recommendations with entry points, targets, and stop levels.
+When you call tools, use **exact** indicator names (case-sensitive). Always call `get_alpaca_data` first for price data, then compute EOD-relevant indicators. Provide specific EOD trading recommendations with entry points, targets, and stop levels.
             """
             + """ 
 
@@ -106,6 +114,30 @@ Focus on actionable EOD trading insights, not generic market commentary."""
         prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(ticker=ticker)
+
+        # Capture the COMPLETE resolved prompt that gets sent to the LLM
+        try:
+            # Get the formatted messages with all variables resolved
+            messages_history = list(state["messages"])
+            formatted_messages = prompt.format_messages(messages=messages_history)
+            
+            # Extract the complete system message (first message)
+            if formatted_messages and hasattr(formatted_messages[0], 'content'):
+                complete_prompt = formatted_messages[0].content
+            else:
+                # Fallback: manually construct the complete prompt
+                tool_names_str = ", ".join([tool.name for tool in tools])
+                complete_prompt = f""" You are a helpful AI assistant, collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to fully answer, that's OK; another assistant with different tools will help where you left off. Execute what you can to make progress. If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable, prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop. You have access to the following tools: {tool_names_str}.
+
+{system_message}
+
+For your reference, the current date is {current_date}. The company we want to look at is {ticker}"""
+            
+            capture_agent_prompt("market_report", complete_prompt, ticker)
+        except Exception as e:
+            print(f"[MARKET] Warning: Could not capture complete prompt: {e}")
+            # Fallback to system message only
+            capture_agent_prompt("market_report", system_message, ticker)
 
         chain = prompt | llm.bind_tools(tools)
 

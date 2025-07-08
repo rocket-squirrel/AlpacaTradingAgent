@@ -91,15 +91,7 @@ def main():
     
     if port != args.port:
         print(f"⚠️ Port {args.port} is in use. Using port {port} instead.")
-    
-    print(f"🚀 Starting TradingAgents Dash Web UI (Debug Mode) on port {port}...")
-    print(f"⏰ Analysis timeout: {args.timeout} seconds")
-    print(f"🌐 Access at: http://127.0.0.1:{port}/")
-    print("\n💡 If analysis gets stuck:")
-    print("   1. Check the console for timeout warnings")
-    print("   2. Use the 'Stop Analysis' button in the web UI")
-    print("   3. Check for Reddit API or network issues")
-    
+
     # Setup timeout handler
     timeout_handler = TimeoutHandler(args.timeout)
     

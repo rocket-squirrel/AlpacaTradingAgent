@@ -64,7 +64,6 @@ def apply_sequential_mode_fix():
         # Apply the patch
         AppState.process_chunk_updates = fixed_process_chunk_updates
         AppState._mapping_fix_applied = True
-        print("✅ Applied sequential mode report mapping fix")
         return True
         
     except Exception as e:

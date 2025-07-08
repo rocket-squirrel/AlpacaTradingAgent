@@ -2,6 +2,14 @@ import time
 import json
 from ..utils.agent_trading_modes import get_trading_mode_context, get_agent_specific_context
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_neutral_debator(llm, config=None):
     def neutral_node(state) -> dict:
@@ -67,6 +75,10 @@ Engage actively by analyzing both sides critically, addressing weaknesses in the
 Always conclude with your recommendation using the format: {decision_format}
 
 Output conversationally as if you are speaking without any special formatting."""
+
+        # Capture the COMPLETE prompt that gets sent to the LLM
+        ticker = state.get("company_of_interest", "")
+        capture_agent_prompt("neutral_report", prompt, ticker)
 
         response = llm.invoke(prompt)
 

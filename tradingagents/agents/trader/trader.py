@@ -4,6 +4,14 @@ import json
 from ..utils.agent_trading_modes import get_trading_mode_context, get_agent_specific_context, extract_recommendation, format_final_decision
 from tradingagents.dataflows.alpaca_utils import AlpacaUtils
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_trader(llm, memory, config=None):
     def trader_node(state, name):
@@ -200,6 +208,23 @@ Do not forget to utilize lessons from past decisions to learn from your mistakes
             },
             context,
         ]
+
+        # Capture the COMPLETE prompt that gets sent to the LLM
+        try:
+            # Combine system and user messages into complete prompt
+            system_message = messages[0]["content"]
+            user_message = context["content"]
+            complete_prompt = f"""SYSTEM MESSAGE:
+{system_message}
+
+USER MESSAGE:
+{user_message}"""
+            
+            capture_agent_prompt("trader_investment_plan", complete_prompt, company_name)
+        except Exception as e:
+            print(f"[TRADER] Warning: Could not capture complete prompt: {e}")
+            # Fallback to system message only
+            capture_agent_prompt("trader_investment_plan", messages[0]["content"], company_name)
 
         result = llm.invoke(messages)
 

@@ -3,6 +3,14 @@ import time
 import json
 from langchain_core.messages import AIMessage, ToolMessage
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_macro_analyst(llm, toolkit):
     def macro_analyst_node(state):
@@ -82,6 +90,30 @@ def create_macro_analyst(llm, toolkit):
             prompt = prompt.partial(system_message=system_message)
             prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
             prompt = prompt.partial(current_date=current_date)
+
+            # Capture the COMPLETE resolved prompt that gets sent to the LLM
+            try:
+                # Get the formatted messages with all variables resolved
+                messages_history = list(state["messages"])
+                formatted_messages = prompt.format_messages(messages=messages_history)
+                
+                # Extract the complete system message (first message)
+                if formatted_messages and hasattr(formatted_messages[0], 'content'):
+                    complete_prompt = formatted_messages[0].content
+                else:
+                    # Fallback: manually construct the complete prompt
+                    tool_names_str = ", ".join([tool.name for tool in tools])
+                    complete_prompt = f"""You are a helpful AI assistant, collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to fully answer, that's OK; another assistant with different tools will help where you left off. Execute what you can to make progress. If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable, prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop. You have access to the following tools: {tool_names_str}.
+
+{system_message}
+
+For your reference, the current date is {current_date}. Focus on macroeconomic conditions that affect overall market sentiment and sector rotation. If tools fail due to missing API keys, provide a general macro analysis based on current market knowledge."""
+                
+                capture_agent_prompt("macro_report", complete_prompt, ticker)
+            except Exception as e:
+                print(f"[MACRO] Warning: Could not capture complete prompt: {e}")
+                # Fallback to system message only
+                capture_agent_prompt("macro_report", system_message, ticker)
 
             chain = prompt | llm.bind_tools(tools)
             

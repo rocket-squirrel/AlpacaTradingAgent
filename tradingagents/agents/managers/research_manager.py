@@ -1,6 +1,14 @@
 import time
 import json
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_research_manager(llm, memory):
     def research_manager_node(state) -> dict:
@@ -37,6 +45,11 @@ Here are your past reflections on mistakes:
 Here is the debate:
 Debate History:
 {history}"""
+
+        # Capture the COMPLETE prompt that gets sent to the LLM
+        ticker = state.get("company_of_interest", "")
+        capture_agent_prompt("research_manager_report", prompt, ticker)
+
         response = llm.invoke(prompt)
 
         new_investment_debate_state = {

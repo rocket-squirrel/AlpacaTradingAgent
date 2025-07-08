@@ -251,18 +251,59 @@ class Toolkit:
         Retrieve stock stats indicators for a given ticker symbol and indicator.
         Args:
             symbol (str): Ticker symbol of the company, e.g. AAPL, TSM
-            indicator (str): Technical indicator to get the analysis and report of
+            indicator (str): Technical indicator to get the analysis and report of, or 'all' for comprehensive report
             curr_date (str): The current trading date you are trading on, YYYY-mm-dd
             look_back_days (int): How many days to look back, default is 30
         Returns:
-            str: A formatted dataframe containing the stock stats indicators for the specified ticker symbol and indicator.
+            str: A formatted report containing the stock stats indicators for the specified ticker symbol and indicator.
         """
 
-        result_stockstats = interface.get_stock_stats_indicators_window(
-            symbol, indicator, curr_date, look_back_days, True
-        )
-
-        return result_stockstats
+        if indicator.lower() == 'all':
+            # Handle comprehensive indicator report
+            key_indicators = [
+                'close_10_ema',     # 10-day Exponential Moving Average
+                'close_20_sma',     # 20-day Simple Moving Average  
+                'close_50_sma',     # 50-day Simple Moving Average
+                'rsi_14',           # 14-day Relative Strength Index
+                'macd',             # Moving Average Convergence Divergence
+                'boll_ub',          # Bollinger Bands Upper Band
+                'boll_lb',          # Bollinger Bands Lower Band
+                'volume_delta'      # Volume Delta
+            ]
+            
+            results = []
+            results.append(f"# Comprehensive Technical Indicators Report for {symbol} on {curr_date}")
+            results.append("")
+            
+            for ind in key_indicators:
+                try:
+                    result = interface.get_stockstats_indicator(symbol, ind, curr_date, True)
+                    # Clean up the result format
+                    if result.startswith(f"## {ind} for"):
+                        # Extract just the value part
+                        value_part = result.split(": ")[-1]
+                        indicator_name = ind.replace('_', ' ').title()
+                        results.append(f"**{indicator_name}:** {value_part}")
+                    else:
+                        results.append(f"**{ind}:** {result}")
+                except Exception as e:
+                    results.append(f"**{ind}:** Error - {str(e)}")
+            
+            results.append("")
+            results.append("## EOD Trading Analysis")
+            results.append("These indicators provide key signals for end-of-day trading decisions:")
+            results.append("- **EMAs/SMAs:** Trend direction and support/resistance levels")
+            results.append("- **RSI:** Overbought (>70) or oversold (<30) conditions")  
+            results.append("- **MACD:** Momentum and trend change signals")
+            results.append("- **Bollinger Bands:** Volatility and price extremes")
+            
+            return "\n".join(results)
+        else:
+            # For single indicator, use the existing method
+            result_stockstats = interface.get_stockstats_indicator(
+                symbol, indicator, curr_date, True
+            )
+            return result_stockstats
 
     @staticmethod
     @tool

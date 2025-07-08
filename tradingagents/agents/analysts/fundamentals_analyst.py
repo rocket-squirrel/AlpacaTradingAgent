@@ -3,6 +3,14 @@ import time
 import json
 from langchain_core.messages import AIMessage, ToolMessage
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_fundamentals_analyst(llm, toolkit):
     def fundamentals_analyst_node(state):
@@ -60,22 +68,22 @@ def create_fundamentals_analyst(llm, toolkit):
             system_message = (
                 "You are an EOD TRADING fundamentals analyst focused on identifying fundamental catalysts and factors that could drive overnight and next-day price movements. "
                 + ("Analyze DeFi metrics like TVL changes, protocol upgrades, token unlock schedules, yield farming opportunities, and major partnership announcements that could impact crypto prices overnight and next trading day. " if is_crypto else "Focus on after-hours earnings, analyst upgrades/downgrades, insider activity, overnight news, and fundamental shifts that could create EOD trading opportunities for next-day positioning. ")
-                + "**EOD TRADING FUNDAMENTALS FOCUS:** "
-                + "Look for overnight catalysts, not long-term value investing metrics. Identify events and data releases that could drive overnight gaps and next-day price movements. "
-                + "**KEY AREAS FOR EOD TRADERS:** "
-                + "1. **After-Hours Earnings:** Quarterly results released after market close, guidance changes, surprise potential "
-                + "2. **Analyst Activity:** After-hours upgrades/downgrades, price target changes, overnight research reports "
-                + "3. **Insider Trading:** Recent insider buying/selling patterns indicating overnight sentiment shifts "
-                + "4. **Overnight Sector Trends:** Industry rotation, peer performance, relative strength for next day "
-                + "5. **Event Calendar:** FDA approvals, contract announcements, product launches affecting next trading day "
-                + "6. **Financial Health:** Any deteriorating metrics that could trigger overnight selling pressure "
-                + "7. **Momentum Factors:** After-hours estimate revisions, sales trends, competitive positioning changes "
-                + "**ANALYSIS REQUIREMENTS:** "
-                + "- Identify specific times for overnight catalysts "
-                + "- Assess probability and magnitude of potential overnight price impact "
-                + "- Consider both positive and negative fundamental drivers for next day "
-                + "- Focus on actionable insights for overnight trading and next-day positioning "
-                + "- Avoid long-term valuation metrics unless they create immediate overnight catalysts "
+                + "**EOD TRADING FUNDAMENTALS FOCUS:** \n"
+                + "Look for overnight catalysts, not long-term value investing metrics. Identify events and data releases that could drive overnight gaps and next-day price movements. \n"
+                + "**KEY AREAS FOR EOD TRADERS:** \n"
+                + "1. **After-Hours Earnings:** Quarterly results released after market close, guidance changes, surprise potential \n"
+                + "2. **Analyst Activity:** After-hours upgrades/downgrades, price target changes, overnight research reports \n"
+                + "3. **Insider Trading:** Recent insider buying/selling patterns indicating overnight sentiment shifts \n"
+                + "4. **Overnight Sector Trends:** Industry rotation, peer performance, relative strength for next day \n"
+                + "5. **Event Calendar:** FDA approvals, contract announcements, product launches affecting next trading day \n"
+                + "6. **Financial Health:** Any deteriorating metrics that could trigger overnight selling pressure \n"
+                + "7. **Momentum Factors:** After-hours estimate revisions, sales trends, competitive positioning changes \n"
+                + "**ANALYSIS REQUIREMENTS:** \n"
+                + "- Identify specific times for overnight catalysts \n"
+                + "- Assess probability and magnitude of potential overnight price impact \n"
+                + "- Consider both positive and negative fundamental drivers for next day \n"
+                + "- Focus on actionable insights for overnight trading and next-day positioning \n"
+                + "- Avoid long-term valuation metrics unless they create immediate overnight catalysts \n"
                 + "Provide detailed, actionable fundamental analysis that EOD traders can use to time entries and exits around overnight events and after-hours data releases."
                 + " Make sure to append a Markdown table at the end organizing key overnight events, times, and potential price impact for EOD trading decisions."
             )
@@ -103,6 +111,32 @@ def create_fundamentals_analyst(llm, toolkit):
             prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
             prompt = prompt.partial(current_date=current_date)
             prompt = prompt.partial(ticker=display_ticker if is_crypto else ticker)
+
+            # Capture the COMPLETE resolved prompt that gets sent to the LLM
+            try:
+                # Get the formatted messages with all variables resolved
+                messages_history = list(state["messages"])
+                formatted_messages = prompt.format_messages(messages=messages_history)
+                
+                # Extract the complete system message (first message)
+                if formatted_messages and hasattr(formatted_messages[0], 'content'):
+                    complete_prompt = formatted_messages[0].content
+                else:
+                    # Fallback: manually construct the complete prompt
+                    tool_names_str = ", ".join([tool.name for tool in tools])
+                    ticker_display = display_ticker if is_crypto else ticker
+                    asset_type_text = "The cryptocurrency we want to analyze is" if is_crypto else "The company we want to look at is"
+                    complete_prompt = f"""You are a helpful AI assistant, collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to fully answer, that's OK; another assistant with different tools will help where you left off. Execute what you can to make progress. If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable, prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop. You have access to the following tools: {tool_names_str}.
+
+{system_message}
+
+For your reference, the current date is {current_date}. {asset_type_text} {ticker_display}"""
+                
+                capture_agent_prompt("fundamentals_report", complete_prompt, ticker)
+            except Exception as e:
+                print(f"[FUNDAMENTALS] Warning: Could not capture complete prompt: {e}")
+                # Fallback to system message only
+                capture_agent_prompt("fundamentals_report", system_message, ticker)
 
             chain = prompt | llm.bind_tools(tools)
             

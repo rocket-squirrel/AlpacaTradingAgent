@@ -3,11 +3,12 @@ Report-related callbacks for TradingAgents WebUI
 Enhanced with symbol-based pagination
 """
 
-from dash import Input, Output, ctx, html, ALL, dash, dcc
+from dash import Input, Output, ctx, html, ALL, dash, dcc, callback_context
 import dash_bootstrap_components as dbc
 from webui.utils.state import app_state
 from webui.components.ui import render_researcher_debate, render_risk_debate
 from webui.utils.report_validator import validate_reports_for_ui
+from webui.utils.prompt_capture import get_agent_prompt
 
 
 def create_symbol_button(symbol, index, is_active=False):
@@ -21,12 +22,23 @@ def create_symbol_button(symbol, index, is_active=False):
     )
 
 
-def create_markdown_content(content, default_message="No content available yet."):
-    """Create a markdown component with enhanced styling"""
+def create_markdown_content(content, default_message="No content available yet.", report_type=None):
+    """Create a markdown component with enhanced styling and conditional prompt button"""
+    has_content = content and content.strip() != "" and content != default_message
+    
+    # Check if this is a loading or default message
+    is_loading_message = (
+        "Loading" in content or 
+        "Waiting" in content or 
+        "Analysis in progress" in content or
+        content == default_message or
+        "No " in content and "available yet" in content
+    ) if content else True
+    
     if not content or content.strip() == "":
         content = default_message
     
-    return dcc.Markdown(
+    markdown_component = dcc.Markdown(
         content,
         mathjax=True,
         highlight_config={"theme": "dark"},
@@ -42,6 +54,21 @@ def create_markdown_content(content, default_message="No content available yet."
             "line-height": "1.6"
         }
     )
+    
+    # If we have actual content and a report type, add a prompt button
+    if has_content and not is_loading_message and report_type:
+        from webui.components.prompt_modal import create_show_prompt_button
+        
+        return html.Div([
+            html.Div([
+                html.Div([
+                    create_show_prompt_button(report_type)
+                ], className="text-end mb-2")
+            ]),
+            markdown_component
+        ])
+    
+    return markdown_component
 
 
 def register_report_callbacks(app):
@@ -142,7 +169,7 @@ def register_report_callbacks(app):
          Input("medium-refresh-interval", "n_intervals")]
     )
     def update_researcher_debate(active_page, n_intervals):
-        """Update the researcher debate tab"""
+        """Update the researcher debate tab with Dash components and prompt buttons"""
         if not app_state.symbol_states or not active_page:
             return create_markdown_content("", "No researcher debate available yet.")
 
@@ -152,22 +179,92 @@ def register_report_callbacks(app):
             return create_markdown_content("", "Page index out of range. Please refresh or restart analysis.")
 
         symbol = symbols_list[active_page - 1]
+        state = app_state.get_state(symbol)
         
-        # Use the proper render_researcher_debate function from ui.py
-        from webui.components.ui import render_researcher_debate
-        debate_html = render_researcher_debate(symbol)
+        if not state:
+            return create_markdown_content("", f"No active analysis for {symbol}. Researcher debate will appear here once analysis starts.")
+
+        # Get the debate state
+        debate_state = state.get("investment_debate_state")
         
-        # Return an iframe to display the chat-like interface
-        return html.Iframe(
-            srcDoc=debate_html,
+        if not debate_state or not debate_state.get("history"):
+            return create_markdown_content("", "Researcher debate will begin once analysis starts.")
+
+        debate_components = []
+        
+        # Add Bull Researcher section if available
+        bull_history = debate_state.get("bull_history", "")
+        if bull_history and bull_history.strip():
+            from webui.components.prompt_modal import create_show_prompt_button
+            
+            bull_section = html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span("🐂 Bull Researcher", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
+                        create_show_prompt_button("bull_report")
+                    ], className="d-flex justify-content-between align-items-center mb-2")
+                ]),
+                dcc.Markdown(
+                    bull_history,
+                    mathjax=True,
+                    highlight_config={"theme": "dark"},
+                    dangerously_allow_html=False,
+                    className='enhanced-markdown-content',
+                    style={
+                        "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
+                        "border-radius": "8px",
+                        "padding": "1rem",
+                        "border-left": "4px solid #10B981",
+                        "color": "#E2E8F0",
+                        "margin-bottom": "1rem"
+                    }
+                )
+            ])
+            debate_components.append(bull_section)
+        
+        # Add Bear Researcher section if available  
+        bear_history = debate_state.get("bear_history", "")
+        if bear_history and bear_history.strip():
+            from webui.components.prompt_modal import create_show_prompt_button
+            
+            bear_section = html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span("🐻 Bear Researcher", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
+                        create_show_prompt_button("bear_report")
+                    ], className="d-flex justify-content-between align-items-center mb-2")
+                ]),
+                dcc.Markdown(
+                    bear_history,
+                    mathjax=True,
+                    highlight_config={"theme": "dark"},
+                    dangerously_allow_html=False,
+                    className='enhanced-markdown-content',
+                    style={
+                        "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
+                        "border-radius": "8px",
+                        "padding": "1rem",
+                        "border-left": "4px solid #EF4444",
+                        "color": "#E2E8F0",
+                        "margin-bottom": "1rem"
+                    }
+                )
+            ])
+            debate_components.append(bear_section)
+        
+        if not debate_components:
+            return create_markdown_content("", "Researcher debate will begin once analysis starts.")
+        
+        return html.Div(
+            debate_components,
             style={
-                "width": "100%", 
-                "height": "500px", 
-                "border": "none",
+                "background": "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
                 "border-radius": "8px",
-                "background": "#1E293B"
-            },
-            className="debate-iframe"
+                "padding": "1.5rem",
+                "min-height": "400px",
+                "maxHeight": "600px",
+                "overflowY": "auto"
+            }
         )
 
     @app.callback(
@@ -176,7 +273,7 @@ def register_report_callbacks(app):
          Input("medium-refresh-interval", "n_intervals")]
     )
     def update_risk_debate(active_page, n_intervals):
-        """Update the risk debate tab"""
+        """Update the risk debate tab with Dash components and prompt buttons"""
         if not app_state.symbol_states or not active_page:
             return create_markdown_content("", "No risk debate available yet.")
 
@@ -186,22 +283,122 @@ def register_report_callbacks(app):
             return create_markdown_content("", "Page index out of range. Please refresh or restart analysis.")
 
         symbol = symbols_list[active_page - 1]
+        state = app_state.get_state(symbol)
         
-        # Use the proper render_risk_debate function from ui.py
-        from webui.components.ui import render_risk_debate
-        debate_html = render_risk_debate(symbol)
+        if not state:
+            return create_markdown_content("", f"No active analysis for {symbol}. Risk debate will appear here once analysis starts.")
+
+        # Get the risk debate state
+        risk_debate_state = state.get("risk_debate_state")
         
-        # Return an iframe to display the chat-like interface
-        return html.Iframe(
-            srcDoc=debate_html,
+        if not risk_debate_state or not risk_debate_state.get("history"):
+            return create_markdown_content("", "Risk debate will begin once analysis starts.")
+
+        debate_components = []
+        
+        # Add Risky/Aggressive section if available
+        risky_history = risk_debate_state.get("risky_history", "")
+        if risky_history and risky_history.strip():
+            from webui.components.prompt_modal import create_show_prompt_button
+            
+            risky_section = html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span("⚡ Risky Analyst", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
+                        create_show_prompt_button("aggressive_report")
+                    ], className="d-flex justify-content-between align-items-center mb-2")
+                ]),
+                dcc.Markdown(
+                    risky_history,
+                    mathjax=True,
+                    highlight_config={"theme": "dark"},
+                    dangerously_allow_html=False,
+                    className='enhanced-markdown-content',
+                    style={
+                        "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
+                        "border-radius": "8px",
+                        "padding": "1rem",
+                        "border-left": "4px solid #EF4444",
+                        "color": "#E2E8F0",
+                        "margin-bottom": "1rem"
+                    }
+                )
+            ])
+            debate_components.append(risky_section)
+        
+        # Add Safe/Conservative section if available  
+        safe_history = risk_debate_state.get("safe_history", "")
+        if safe_history and safe_history.strip():
+            from webui.components.prompt_modal import create_show_prompt_button
+            
+            safe_section = html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span("🛡️ Safe Analyst", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
+                        create_show_prompt_button("conservative_report")
+                    ], className="d-flex justify-content-between align-items-center mb-2")
+                ]),
+                dcc.Markdown(
+                    safe_history,
+                    mathjax=True,
+                    highlight_config={"theme": "dark"},
+                    dangerously_allow_html=False,
+                    className='enhanced-markdown-content',
+                    style={
+                        "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
+                        "border-radius": "8px",
+                        "padding": "1rem",
+                        "border-left": "4px solid #10B981",
+                        "color": "#E2E8F0",
+                        "margin-bottom": "1rem"
+                    }
+                )
+            ])
+            debate_components.append(safe_section)
+        
+        # Add Neutral section if available
+        neutral_history = risk_debate_state.get("neutral_history", "")
+        if neutral_history and neutral_history.strip():
+            from webui.components.prompt_modal import create_show_prompt_button
+            
+            neutral_section = html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span("⚖️ Neutral Analyst", className="me-2", style={"fontWeight": "bold", "color": "#3B82F6"}),
+                        create_show_prompt_button("neutral_report")
+                    ], className="d-flex justify-content-between align-items-center mb-2")
+                ]),
+                dcc.Markdown(
+                    neutral_history,
+                    mathjax=True,
+                    highlight_config={"theme": "dark"},
+                    dangerously_allow_html=False,
+                    className='enhanced-markdown-content',
+                    style={
+                        "background": "linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%)",
+                        "border-radius": "8px",
+                        "padding": "1rem",
+                        "border-left": "4px solid #3B82F6",
+                        "color": "#E2E8F0",
+                        "margin-bottom": "1rem"
+                    }
+                )
+            ])
+            debate_components.append(neutral_section)
+        
+        if not debate_components:
+            return create_markdown_content("", "Risk debate will begin once analysis starts.")
+        
+        return html.Div(
+            debate_components,
             style={
-                "width": "100%", 
-                "height": "500px", 
-                "border": "none",
+                "background": "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
                 "border-radius": "8px",
-                "background": "#1E293B"
-            },
-            className="debate-iframe"
+                "padding": "1.5rem",
+                "min-height": "400px",
+                "maxHeight": "600px",
+                "overflowY": "auto"
+            }
         )
 
     @app.callback(
@@ -294,14 +491,14 @@ def register_report_callbacks(app):
         portfolio_report = reports.get("final_trade_decision") or "No final decision available yet."
         
         return (
-            create_markdown_content(market_report),
-            create_markdown_content(sentiment_report),
-            create_markdown_content(news_report),
-            create_markdown_content(fundamentals_report),
-            create_markdown_content(macro_report),
-            create_markdown_content(research_manager_report),
-            create_markdown_content(trader_report),
-            create_markdown_content(portfolio_report)
+            create_markdown_content(market_report, "No market analysis available yet.", "market_report"),
+            create_markdown_content(sentiment_report, "No sentiment analysis available yet.", "sentiment_report"),
+            create_markdown_content(news_report, "No news analysis available yet.", "news_report"),
+            create_markdown_content(fundamentals_report, "No fundamentals analysis available yet.", "fundamentals_report"),
+            create_markdown_content(macro_report, "No macro analysis available yet.", "macro_report"),
+            create_markdown_content(research_manager_report, "No research manager decision available yet.", "research_manager_report"),
+            create_markdown_content(trader_report, "No trader report available yet.", "trader_investment_plan"),
+            create_markdown_content(portfolio_report, "No final decision available yet.", "final_trade_decision")
         )
 
     @app.callback(
@@ -446,4 +643,81 @@ def register_report_callbacks(app):
             "nav-final": "final-decision"
         }
         
-        return tab_mapping.get(trigger_id, "market-analysis") 
+        return tab_mapping.get(trigger_id, "market-analysis")
+
+    # Prompt Modal Callbacks
+    @app.callback(
+        [Output("prompt-modal", "is_open"),
+         Output("prompt-modal-title", "children"), 
+         Output("prompt-modal-content", "children")],
+        [Input({"type": "show-prompt-btn", "report": ALL}, "n_clicks"),
+         Input("close-prompt-modal-btn", "n_clicks")],
+        prevent_initial_call=True
+    )
+    def handle_prompt_modal(show_clicks, close_clicks):
+        """Handle opening and closing the prompt modal"""
+        if not ctx.triggered:
+            return False, "Agent Prompt", "No prompt selected"
+        
+        trigger_id = ctx.triggered[0]['prop_id']
+        
+        # Close modal
+        if "close-prompt-modal-btn" in trigger_id:
+            return False, "Agent Prompt", "No prompt selected"
+        
+        # Open modal with specific prompt
+        if "show-prompt-btn" in trigger_id and any(show_clicks):
+            # Find which button was clicked
+            import json
+            
+            # Extract the report type from the button that was clicked
+            for i, clicks in enumerate(show_clicks):
+                if clicks:
+                    # Get the report type from the pattern match
+                    button_data = json.loads(trigger_id.split('.')[0])
+                    report_type = button_data.get("report")
+                    
+                    if report_type:
+                        # Get current symbol
+                        current_symbol = app_state.current_symbol
+                        
+                        # Get the prompt for this report type
+                        prompt_content = get_agent_prompt(report_type, current_symbol)
+                        
+                        # Create a nice title
+                        report_titles = {
+                            "market_report": "Market Analyst Prompt",
+                            "sentiment_report": "Social Media Analyst Prompt", 
+                            "news_report": "News Analyst Prompt",
+                            "fundamentals_report": "Fundamentals Analyst Prompt",
+                            "macro_report": "Macro Analyst Prompt",
+                            "bull_report": "Bull Researcher Prompt",
+                            "bear_report": "Bear Researcher Prompt",
+                            "research_manager_report": "Research Manager Prompt",
+                            "trader_investment_plan": "Trader Prompt"
+                        }
+                        
+                        title = report_titles.get(report_type, f"{report_type.replace('_', ' ').title()} Prompt")
+                        
+                        return True, title, f"```\n{prompt_content}\n```"
+        
+        return False, "Agent Prompt", "No prompt selected"
+
+    @app.callback(
+        Output("copy-prompt-btn", "children"),
+        [Input("copy-prompt-btn", "n_clicks")],
+        prevent_initial_call=True
+    )
+    def copy_prompt_to_clipboard(n_clicks):
+        """Handle copying prompt to clipboard (visual feedback only)"""
+        if n_clicks:
+            # In a real implementation, you'd use clientside callback or JavaScript
+            # For now, just provide visual feedback
+            return [
+                html.I(className="fas fa-check me-2"),
+                "Copied!"
+            ]
+        return [
+            html.I(className="fas fa-copy me-2"),
+            "Copy to Clipboard"
+        ] 

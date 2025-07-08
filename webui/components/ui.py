@@ -102,6 +102,7 @@ def render_researcher_debate(symbol):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
         <style>
             body {{
                 margin: 0;
@@ -185,10 +186,15 @@ def render_researcher_debate(symbol):
                 margin-left: auto;
                 border-right: 4px solid #EF4444;
             }}
+            .message-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 6px;
+            }}
             .message-author {{
                 font-weight: bold;
                 font-size: 0.85rem;
-                margin-bottom: 6px;
                 opacity: 0.9;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
@@ -198,6 +204,27 @@ def render_researcher_debate(symbol):
             }}
             .bear-message .message-author {{
                 color: #FECACA;
+            }}
+            .prompt-btn {{
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                color: rgba(255, 255, 255, 0.8);
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 0.7rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                opacity: 0.7;
+            }}
+            .prompt-btn:hover {{
+                background: rgba(255, 255, 255, 0.2);
+                border-color: rgba(255, 255, 255, 0.4);
+                opacity: 1;
+                transform: translateY(-1px);
+            }}
+            .prompt-btn i {{
+                margin-right: 4px;
+                font-size: 0.6rem;
             }}
             .message-content {{
                 font-size: 0.95rem;
@@ -258,6 +285,26 @@ def render_researcher_debate(symbol):
             let lastMessageCount = 0;
             let isUserAtBottom = true;
             let isInitialized = false;
+            
+            // Function to communicate with parent window to show prompt modal
+            function showPrompt(reportType, title) {{
+                try {{
+                    // Try to trigger the parent window's prompt modal
+                    if (window.parent && window.parent !== window) {{
+                        // Send message to parent window
+                        window.parent.postMessage({{
+                            type: 'showPrompt',
+                            reportType: reportType,
+                            title: title
+                        }}, '*');
+                    }} else {{
+                        // Fallback - just log if we can't communicate with parent
+                        console.log('Show prompt for:', reportType, title);
+                    }}
+                }} catch (e) {{
+                    console.log('Could not show prompt:', e);
+                }}
+            }}
             
             // Storage keys for handling page refreshes only
             const SCROLL_KEY = 'debate_scroll_{symbol}';
@@ -445,7 +492,12 @@ def render_researcher_debate(symbol):
                 html += f"""
                     <div class="message-row" data-message-index="{i}">
                         <div class="message bull-message">
-                            <div class="message-author">🐂 Bull Researcher</div>
+                            <div class="message-header">
+                                <div class="message-author">🐂 Bull Researcher</div>
+                                <button class="prompt-btn bull-prompt-btn" onclick="showPrompt('bull_report', 'Bull Researcher Prompt')">
+                                    <i class="fas fa-code"></i> Prompt
+                                </button>
+                            </div>
                             <div class="message-content">{escaped_content}</div>
                         </div>
                     </div>
@@ -454,7 +506,12 @@ def render_researcher_debate(symbol):
                 html += f"""
                     <div class="message-row" data-message-index="{i}">
                         <div class="message bear-message">
-                            <div class="message-author">🐻 Bear Researcher</div>
+                            <div class="message-header">
+                                <div class="message-author">🐻 Bear Researcher</div>
+                                <button class="prompt-btn bear-prompt-btn" onclick="showPrompt('bear_report', 'Bear Researcher Prompt')">
+                                    <i class="fas fa-code"></i> Prompt
+                                </button>
+                            </div>
                             <div class="message-content">{escaped_content}</div>
                         </div>
                     </div>

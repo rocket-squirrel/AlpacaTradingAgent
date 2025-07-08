@@ -2,6 +2,14 @@ from langchain_core.messages import AIMessage
 import time
 import json
 
+# Import prompt capture utility
+try:
+    from webui.utils.prompt_capture import capture_agent_prompt
+except ImportError:
+    # Fallback for when webui is not available
+    def capture_agent_prompt(report_type, prompt_content, symbol=None):
+        pass
+
 
 def create_bull_researcher(llm, memory):
     def bull_node(state) -> dict:
@@ -42,6 +50,10 @@ Last bear argument: {current_response}
 Reflections from similar situations and lessons learned: {past_memory_str}
 Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position. You must also address reflections and learn from lessons and mistakes you made in the past.
 """
+
+        # Capture the COMPLETE prompt that gets sent to the LLM (including all dynamic content)
+        ticker = state.get("company_of_interest", "")
+        capture_agent_prompt("bull_report", prompt, ticker)
 
         response = llm.invoke(prompt)
 
