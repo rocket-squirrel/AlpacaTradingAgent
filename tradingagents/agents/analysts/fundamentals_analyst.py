@@ -50,7 +50,7 @@ def create_fundamentals_analyst(llm, toolkit):
                     tools = [
                         toolkit.get_fundamentals_openai,
                         toolkit.get_earnings_calendar,
-                        toolkit.get_earnings_surprise_analysis
+                        toolkit.get_earnings_surprise_analysis,
                     ]
                     # print(f"[FUNDAMENTALS] Using online stock tools: OpenAI Fundamentals + Earnings Analysis")
             else:

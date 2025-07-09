@@ -42,11 +42,11 @@ def is_report_complete(report_content: str, report_type: str) -> bool:
     
     # Check minimum length by report type
     min_lengths = {
-        "market_report": 500,
-        "sentiment_report": 300,
-        "news_report": 400,
-        "fundamentals_report": 600,
-        "macro_report": 800,
+        "market_report": 1000,
+        "sentiment_report": 1000,
+        "news_report": 1000,
+        "fundamentals_report": 1000,
+        "macro_report": 1000,
     }
     
     min_length = min_lengths.get(report_type, 300)

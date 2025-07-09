@@ -68,10 +68,10 @@ class TradingAgentsGraph:
         
         # Claude models don't support temperature parameter
         if not any(model_prefix in deep_think_model for model_prefix in ["o3", "o4-mini"]):
-            deep_think_kwargs["temperature"] = 0.7
+            deep_think_kwargs["temperature"] = 0.2
             
         if not any(model_prefix in quick_think_model for model_prefix in ["o3", "o4-mini"]):
-            quick_think_kwargs["temperature"] = 0.1
+            quick_think_kwargs["temperature"] = 0.2
         
         self.deep_thinking_llm = ChatOpenAI(
             model=deep_think_model, 

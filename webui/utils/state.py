@@ -246,6 +246,83 @@ class AppState:
         # Reset session tracking
         self.current_session_id = None
         self.session_start_time = None
+
+    def get_tool_calls_for_display(self, agent_filter=None):
+        """Get tool calls in a consistent format for UI display, optionally filtered by agent type"""
+        formatted_calls = []
+        
+        for call in self.tool_calls_log:
+            if isinstance(call, dict):
+                # New format - already has all the data we need
+                formatted_calls.append(call)
+            elif isinstance(call, tuple) and len(call) >= 3:
+                # Old format - convert to new format
+                timestamp, tool_name, inputs = call[:3]
+                formatted_call = {
+                    "timestamp": timestamp,
+                    "tool_name": tool_name,
+                    "inputs": inputs,
+                    "output": "Output not available (old format)",
+                    "execution_time": "Unknown",
+                    "status": "completed",
+                    "agent_type": "Unknown Agent"  # Old format doesn't have agent info
+                }
+                formatted_calls.append(formatted_call)
+            else:
+                # Invalid format - create error entry
+                formatted_call = {
+                    "timestamp": "Unknown",
+                    "tool_name": "Invalid Entry",
+                    "inputs": {},
+                    "output": f"Invalid tool call format: {str(call)}",
+                    "execution_time": "Unknown",
+                    "status": "error",
+                    "agent_type": "Unknown Agent"
+                }
+                formatted_calls.append(formatted_call)
+        
+        # Filter by agent type if specified
+        if agent_filter:
+            filtered_calls = []
+            for call in formatted_calls:
+                agent_type = call.get("agent_type", "").lower()
+                # Match agent types using flexible matching
+                if agent_filter.lower() in agent_type or self._matches_agent_type(agent_filter, agent_type):
+                    filtered_calls.append(call)
+            return filtered_calls
+        
+        return formatted_calls
+    
+    def _matches_agent_type(self, filter_type, agent_type):
+        """Helper method to match agent types with flexible naming"""
+        # Mapping of report types to agent names
+        agent_mappings = {
+            "market_report": ["market analyst", "market", "technical analyst"],
+            "sentiment_report": ["social analyst", "social", "sentiment analyst"],
+            "news_report": ["news analyst", "news"],
+            "fundamentals_report": ["fundamentals analyst", "fundamental analyst", "fundamentals"],
+            "macro_report": ["macro analyst", "macro", "macroeconomic analyst"],
+            "bull_report": ["bull researcher", "bull", "optimistic researcher"],
+            "bear_report": ["bear researcher", "bear", "pessimistic researcher"],
+            "research_manager_report": ["research manager", "manager"],
+            "trader_investment_plan": ["trader", "trading", "portfolio manager"],
+            "final_trade_decision": ["portfolio manager", "final", "decision"]
+        }
+        
+        filter_lower = filter_type.lower()
+        agent_lower = agent_type.lower()
+        
+        # Direct match
+        if filter_lower in agent_lower:
+            return True
+            
+        # Check mappings
+        if filter_type in agent_mappings:
+            for mapping in agent_mappings[filter_type]:
+                if mapping in agent_lower:
+                    return True
+                    
+        return False
         
     def reset_for_loop(self):
         """Reset state for the next loop iteration without stopping the loop."""

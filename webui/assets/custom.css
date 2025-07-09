@@ -108,7 +108,7 @@ body {
 
 /* Chart container */
 .chart-container {
-    height: 400px;
+    height: 1000px;
     width: 100%;
 }
 
@@ -666,7 +666,7 @@ body {
     background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
     border-radius: 0 0 8px 8px;
     padding: 1.5rem;
-    min-height: 400px;
+    min-height: 1000px;
     border: 1px solid rgba(51, 65, 85, 0.3);
     border-top: none;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -1032,7 +1032,7 @@ body {
 /* Mobile responsiveness for debates */
 @media (max-width: 768px) {
     .debate-iframe {
-        height: 400px !important;
+        height: 1000px !important;
     }
     
     [id$="debate-tab-content"] {
@@ -1190,6 +1190,204 @@ body {
     .prompt-content {
         font-size: 12px !important;
         max-height: 300px !important;
+    }
+}
+
+/* Tool Outputs Modal Styling */
+.show-tool-outputs-btn {
+    transition: all 0.2s ease-in-out;
+    border-radius: 6px;
+    font-weight: 500;
+    letter-spacing: 0.025em;
+}
+
+.show-tool-outputs-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+}
+
+.report-debug-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.tool-outputs-modal .modal-content {
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+    border: 1px solid #374151;
+}
+
+.tool-outputs-modal-header {
+    background: linear-gradient(135deg, #374151 0%, #1F2937 100%);
+    border-bottom: 1px solid #4B5563;
+}
+
+.tool-outputs-modal-header h4 {
+    color: #FCD34D;
+    font-weight: 600;
+}
+
+.tool-outputs-modal-body {
+    max-height: 70vh;
+    background: #0F172A;
+}
+
+.tool-outputs-content {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.6;
+    background: #111827 !important;
+    border: 1px solid #374151 !important;
+    border-radius: 8px !important;
+    padding: 1.5rem !important;
+    color: #F8FAFC !important;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.tool-outputs-content h1 {
+    color: #FCD34D !important;
+    border-bottom: 2px solid #4B5563;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.tool-outputs-content h2 {
+    color: #34D399 !important;
+    border-bottom: 1px solid #374151;
+    padding-bottom: 0.3rem;
+    margin-bottom: 0.8rem;
+    margin-top: 1.5rem;
+    font-size: 1.2rem;
+}
+
+.tool-outputs-content h3 {
+    color: #60A5FA !important;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.tool-outputs-content p {
+    color: #E5E7EB !important;
+    margin-bottom: 0.5rem;
+}
+
+.tool-outputs-content strong {
+    color: #F3F4F6 !important;
+    font-weight: 600;
+}
+
+.tool-outputs-content code {
+    background: #1E293B !important; /* slightly lighter than pre */
+    color: #93C5FD !important;      /* soft blue text */
+    border: 1px solid #334155;
+}
+
+/* ---------- Better code block readability in Tool Outputs ---------- */
+.tool-outputs-content pre {
+    background: #0F172A !important;   /* darker background */
+    border: 1px solid #334155 !important;
+    color: #F1F5F9 !important;       /* lighter text */
+    border-radius: 6px;
+    padding: 1rem !important;
+    overflow-x: auto;
+    font-size: 13px;
+}
+
+.tool-outputs-content pre code {
+    background: #afbddf !important;   /* darker background */
+    color: #0F172A !important;
+}
+
+.tool-outputs-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.tool-outputs-content::-webkit-scrollbar-track {
+    background: #1F2937;
+    border-radius: 4px;
+}
+
+.tool-outputs-content::-webkit-scrollbar-thumb {
+    background: #4B5563;
+    border-radius: 4px;
+}
+
+.tool-outputs-content::-webkit-scrollbar-thumb:hover {
+    background: #6B7280;
+}
+
+.tool-outputs-modal .modal-footer {
+    background: linear-gradient(135deg, #1F2937 0%, #111827 100%);
+    border-top: 1px solid #374151;
+}
+
+.tool-outputs-modal .btn-outline-warning {
+    border-color: #F59E0B;
+    color: #F59E0B;
+}
+
+.tool-outputs-modal .btn-outline-warning:hover {
+    background-color: #F59E0B;
+    color: #1F2937;
+}
+
+.tool-outputs-modal .btn-outline-primary {
+    border-color: #3B82F6;
+    color: #3B82F6;
+}
+
+.tool-outputs-modal .btn-outline-primary:hover {
+    background-color: #3B82F6;
+    color: #FFFFFF;
+}
+
+.tool-outputs-modal .btn-outline-success {
+    border-color: #10B981;
+    color: #10B981;
+}
+
+.tool-outputs-modal .btn-outline-success:hover {
+    background-color: #10B981;
+    color: #FFFFFF;
+}
+
+.tool-outputs-modal .btn-secondary {
+    background-color: #4B5563;
+    border-color: #4B5563;
+    color: #F9FAFB;
+}
+
+.tool-outputs-modal .btn-secondary:hover {
+    background-color: #374151;
+    border-color: #374151;
+}
+
+@keyframes toolOutputButtonPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.show-tool-outputs-btn:active {
+    animation: toolOutputButtonPulse 0.2s ease-in-out;
+}
+
+@media (max-width: 768px) {
+    .tool-outputs-modal .modal-dialog {
+        margin: 0.5rem;
+        max-width: calc(100% - 1rem);
+    }
+    
+    .report-debug-buttons {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .tool-outputs-content {
+        font-size: 12px;
+        max-height: 300px;
     }
 }
 

@@ -116,7 +116,7 @@ def render_researcher_debate(symbol):
                 display: flex;
                 flex-direction: column;
                 gap: 15px;
-                max-height: calc(100vh - 40px);
+                max-height: 1000px;
                 overflow-y: auto;
                 scroll-behavior: auto;
                 scrollbar-width: thin;
@@ -754,7 +754,7 @@ def render_risk_debate(symbol):
                 display: flex;
                 flex-direction: column;
                 gap: 15px;
-                max-height: calc(100vh - 40px);
+                max-height: 1000px;
                 overflow-y: auto;
                 scroll-behavior: auto;
                 scrollbar-width: thin;

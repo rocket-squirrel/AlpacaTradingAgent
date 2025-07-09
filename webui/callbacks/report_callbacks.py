@@ -3,7 +3,7 @@ Report-related callbacks for TradingAgents WebUI
 Enhanced with symbol-based pagination
 """
 
-from dash import Input, Output, ctx, html, ALL, dash, dcc, callback_context
+from dash import Input, Output, State, ctx, html, ALL, dash, dcc, callback_context
 import dash_bootstrap_components as dbc
 from webui.utils.state import app_state
 from webui.components.ui import render_researcher_debate, render_risk_debate
@@ -27,13 +27,25 @@ def create_markdown_content(content, default_message="No content available yet."
     has_content = content and content.strip() != "" and content != default_message
     
     # Check if this is a loading or default message
-    is_loading_message = (
-        "Loading" in content or 
-        "Waiting" in content or 
-        "Analysis in progress" in content or
-        content == default_message or
-        "No " in content and "available yet" in content
-    ) if content else True
+    # More precise loading detection - only flag as loading if content is clearly a status message
+    is_loading_message = False
+    if content:
+        content_lower = content.lower().strip()
+        # Only flag as loading if it's a short status message starting with these patterns
+        if (
+            content == default_message or
+            (len(content) < 200 and (
+                content_lower.startswith("loading") or
+                content_lower.startswith("waiting") or
+                content_lower.startswith("analysis in progress") or
+                content_lower.startswith("no ") and "available yet" in content_lower or
+                content_lower.startswith("⏳") or
+                content_lower.startswith("🔄")
+            ))
+        ):
+            is_loading_message = True
+    else:
+        is_loading_message = True
     
     if not content or content.strip() == "":
         content = default_message
@@ -49,7 +61,7 @@ def create_markdown_content(content, default_message="No content available yet."
             "border-radius": "8px",
             "padding": "1.5rem",
             "border": "1px solid rgba(51, 65, 85, 0.3)",
-            "min-height": "400px",
+            "min-height": "1000px",
             "color": "#E2E8F0",
             "line-height": "1.6"
         }
@@ -58,12 +70,14 @@ def create_markdown_content(content, default_message="No content available yet."
     # If we have actual content and a report type, add a prompt button
     if has_content and not is_loading_message and report_type:
         from webui.components.prompt_modal import create_show_prompt_button
+        from webui.components.tool_outputs_modal import create_show_tool_outputs_button
         
         return html.Div([
             html.Div([
                 html.Div([
-                    create_show_prompt_button(report_type)
-                ], className="text-end mb-2")
+                    create_show_prompt_button(report_type, className="me-2"),
+                    create_show_tool_outputs_button(report_type)
+                ], className="text-end mb-2 report-debug-buttons")
             ]),
             markdown_component
         ])
@@ -261,7 +275,7 @@ def register_report_callbacks(app):
                 "background": "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
                 "border-radius": "8px",
                 "padding": "1.5rem",
-                "min-height": "400px",
+                "min-height": "1000px",
                 "maxHeight": "600px",
                 "overflowY": "auto"
             }
@@ -395,7 +409,7 @@ def register_report_callbacks(app):
                 "background": "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
                 "border-radius": "8px",
                 "padding": "1.5rem",
-                "min-height": "400px",
+                "min-height": "1000px",
                 "maxHeight": "600px",
                 "overflowY": "auto"
             }
@@ -649,21 +663,29 @@ def register_report_callbacks(app):
     @app.callback(
         [Output("prompt-modal", "is_open"),
          Output("prompt-modal-title", "children"), 
-         Output("prompt-modal-content", "children")],
+         Output("prompt-modal-content", "children"),
+         Output("global-prompt-modal-state", "data")],
         [Input({"type": "show-prompt-btn", "report": ALL}, "n_clicks"),
          Input("close-prompt-modal-btn", "n_clicks")],
+        [State("global-prompt-modal-state", "data")],
         prevent_initial_call=True
     )
-    def handle_prompt_modal(show_clicks, close_clicks):
-        """Handle opening and closing the prompt modal"""
+    def handle_prompt_modal(show_clicks, close_clicks, modal_state):
+        """Handle opening and closing the prompt modal - returns no_update when nothing to do"""
         if not ctx.triggered:
-            return False, "Agent Prompt", "No prompt selected"
+            # Nothing triggered → keep existing state/content untouched
+            return dash.no_update, dash.no_update, dash.no_update, modal_state
         
         trigger_id = ctx.triggered[0]['prop_id']
         
         # Close modal
         if "close-prompt-modal-btn" in trigger_id:
-            return False, "Agent Prompt", "No prompt selected"
+            updated_state = {
+                "is_open": False,
+                "report_type": None,
+                "title": "Agent Prompt"
+            }
+            return False, "Agent Prompt", "No prompt selected", updated_state
         
         # Open modal with specific prompt
         if "show-prompt-btn" in trigger_id and any(show_clicks):
@@ -699,9 +721,17 @@ def register_report_callbacks(app):
                         
                         title = report_titles.get(report_type, f"{report_type.replace('_', ' ').title()} Prompt")
                         
-                        return True, title, f"```\n{prompt_content}\n```"
+                        # Update modal state
+                        updated_state = {
+                            "is_open": True,
+                            "report_type": report_type,
+                            "title": title
+                        }
+                        
+                        return True, title, f"```\n{prompt_content}\n```", updated_state
         
-        return False, "Agent Prompt", "No prompt selected"
+        # Fallback - keep everything unchanged
+        return dash.no_update, dash.no_update, dash.no_update, modal_state or {"is_open": False, "report_type": None, "title": "Agent Prompt"}
 
     @app.callback(
         Output("copy-prompt-btn", "children"),
@@ -720,4 +750,123 @@ def register_report_callbacks(app):
         return [
             html.I(className="fas fa-copy me-2"),
             "Copy to Clipboard"
+        ]
+
+    # Tool Outputs Modal Callbacks
+    @app.callback(
+        [Output("tool-outputs-modal", "is_open"),
+         Output("tool-outputs-modal-title", "children"),
+         Output("tool-outputs-modal-content", "children"),
+         Output("global-tool-outputs-modal-state", "data")],
+        [Input({"type": "show-tool-outputs-btn", "report": ALL}, "n_clicks"),
+         Input("close-tool-outputs-modal-btn", "n_clicks")],
+        [State("global-tool-outputs-modal-state", "data")],
+        prevent_initial_call=True
+    )
+    def handle_tool_outputs_modal(show_clicks, close_clicks, modal_state):
+        """Handle opening and closing the tool outputs modal - returns no_update when nothing to do"""
+        if not ctx.triggered:
+            return dash.no_update, dash.no_update, dash.no_update, modal_state
+        
+        trigger_id = ctx.triggered[0]['prop_id']
+        
+        # Close modal
+        if "close-tool-outputs-modal-btn" in trigger_id:
+            updated_state = {
+                "is_open": False,
+                "report_type": None,
+                "title": "Tool Outputs"
+            }
+            return False, "Tool Outputs", "No tool outputs available", updated_state
+        
+        # Open modal with tool outputs for specific report
+        if "show-tool-outputs-btn" in trigger_id and any(show_clicks):
+            # Find which button was clicked
+            import json
+            
+            # Extract the report type from the button that was clicked
+            for i, clicks in enumerate(show_clicks):
+                if clicks:
+                    # Get the report type from the pattern match
+                    button_data = json.loads(trigger_id.split('.')[0])
+                    report_type = button_data.get("report")
+                    
+                    if report_type:
+                        from webui.components.tool_outputs_modal import format_tool_outputs_content
+                        
+                        # Get tool calls from app state filtered by agent type
+                        tool_calls = app_state.get_tool_calls_for_display(agent_filter=report_type)
+                        formatted_content = format_tool_outputs_content(tool_calls, report_type)
+                        
+                        # Create a nice title
+                        report_titles = {
+                            "market_report": "Market Analyst Tool Outputs",
+                            "sentiment_report": "Social Media Analyst Tool Outputs", 
+                            "news_report": "News Analyst Tool Outputs",
+                            "fundamentals_report": "Fundamentals Analyst Tool Outputs",
+                            "macro_report": "Macro Analyst Tool Outputs",
+                            "bull_report": "Bull Researcher Tool Outputs",
+                            "bear_report": "Bear Researcher Tool Outputs",
+                            "research_manager_report": "Research Manager Tool Outputs",
+                            "trader_investment_plan": "Trader Tool Outputs",
+                            "final_trade_decision": "Portfolio Manager Tool Outputs"
+                        }
+                        
+                        title = report_titles.get(report_type, f"{report_type.replace('_', ' ').title()} Tool Outputs")
+                        
+                        # Create the content with markdown rendering
+                        content = dcc.Markdown(
+                            formatted_content,
+                            highlight_config={"theme": "dark"},
+                            style={
+                                "white-space": "pre-wrap",
+                                "color": "#F8FAFC"  # Lighter text for better readability
+                            }
+                        )
+                        
+                        # Update modal state
+                        updated_state = {
+                            "is_open": True,
+                            "report_type": report_type,
+                            "title": title
+                        }
+                        
+                        return True, title, content, updated_state
+        
+        # Fallback - keep everything unchanged
+        return dash.no_update, dash.no_update, dash.no_update, modal_state or {"is_open": False, "report_type": None, "title": "Tool Outputs"}
+
+    @app.callback(
+        Output("copy-tool-outputs-btn", "children"),
+        [Input("copy-tool-outputs-btn", "n_clicks")],
+        prevent_initial_call=True
+    )
+    def copy_tool_outputs_to_clipboard(n_clicks):
+        """Handle copying tool outputs to clipboard (visual feedback only)"""
+        if n_clicks:
+            return [
+                html.I(className="fas fa-check me-2"),
+                "Copied!"
+            ]
+        return [
+            html.I(className="fas fa-copy me-2"),
+            "Copy All"
+        ]
+
+    @app.callback(
+        Output("export-tool-outputs-btn", "children"),
+        [Input("export-tool-outputs-btn", "n_clicks")],
+        prevent_initial_call=True
+    )
+    def export_tool_outputs_as_json(n_clicks):
+        """Handle exporting tool outputs as JSON (visual feedback only)"""
+        if n_clicks:
+            # In a real implementation, this would trigger a download
+            return [
+                html.I(className="fas fa-check me-2"),
+                "Exported!"
+            ]
+        return [
+            html.I(className="fas fa-download me-2"),
+            "Export JSON"
         ] 

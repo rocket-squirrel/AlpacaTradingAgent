@@ -5,6 +5,7 @@ webui/components/reports_panel.py - Enhanced reports panel with symbol-based pag
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 from webui.components.prompt_modal import create_prompt_modal, create_show_prompt_button
+from webui.components.tool_outputs_modal import create_tool_outputs_modal, create_show_tool_outputs_button
 
 
 def create_symbol_pagination(pagination_id, max_symbols=1):
@@ -247,6 +248,23 @@ def create_reports_panel():
             
             # Prompt Modal
             create_prompt_modal(),
+            
+            # Tool Outputs Modal
+            create_tool_outputs_modal(),
+            
+            # Global state storage for modal persistence (outside of modal components)
+            html.Div([
+                dcc.Store(id="global-prompt-modal-state", data={
+                    "is_open": False,
+                    "report_type": None,
+                    "title": "Agent Prompt"
+                }),
+                dcc.Store(id="global-tool-outputs-modal-state", data={
+                    "is_open": False,
+                    "report_type": None,
+                    "title": "Tool Outputs"
+                })
+            ], style={"display": "none"}),
             
             # Hidden original pagination component for control callback compatibility
             html.Div([
