@@ -59,10 +59,16 @@ Use this information to deliver a compelling bull argument, refute the bear's co
 
         argument = f"Bull Analyst: {response.content}"
 
+        # Store bull messages as a list for proper conversation display
+        bull_messages = investment_debate_state.get("bull_messages", [])
+        bull_messages.append(argument)
+        
         new_investment_debate_state = {
             "history": history + "\n" + argument,
             "bull_history": bull_history + "\n" + argument,
+            "bull_messages": bull_messages,
             "bear_history": investment_debate_state.get("bear_history", ""),
+            "bear_messages": investment_debate_state.get("bear_messages", []),
             "current_response": argument,
             "count": investment_debate_state["count"] + 1,
         }

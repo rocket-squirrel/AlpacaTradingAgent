@@ -656,7 +656,12 @@ class AppState:
             if "bull_history" in debate_state and debate_state["bull_history"]:
                 if state["agent_statuses"].get("Bull Researcher") == "pending":
                     self.update_agent_status("Bull Researcher", "in_progress", analyzing_symbol)
-                state["current_reports"]["bull_report"] = debate_state["bull_history"]
+                # Use the latest message from bull_messages array if available, otherwise use full history
+                if "bull_messages" in debate_state and debate_state["bull_messages"]:
+                    latest_bull_message = debate_state["bull_messages"][-1]
+                    state["current_reports"]["bull_report"] = latest_bull_message
+                else:
+                    state["current_reports"]["bull_report"] = debate_state["bull_history"]
                 self.update_reports_count()
                 ui_update_needed = True
             
@@ -664,7 +669,12 @@ class AppState:
             if "bear_history" in debate_state and debate_state["bear_history"]:
                 if state["agent_statuses"].get("Bear Researcher") == "pending":
                     self.update_agent_status("Bear Researcher", "in_progress", analyzing_symbol)
-                state["current_reports"]["bear_report"] = debate_state["bear_history"]
+                # Use the latest message from bear_messages array if available, otherwise use full history
+                if "bear_messages" in debate_state and debate_state["bear_messages"]:
+                    latest_bear_message = debate_state["bear_messages"][-1]
+                    state["current_reports"]["bear_report"] = latest_bear_message
+                else:
+                    state["current_reports"]["bear_report"] = debate_state["bear_history"]
                 self.update_reports_count()
                 ui_update_needed = True
             

@@ -27,7 +27,16 @@ class Propagator:
             "company_of_interest": ticker_symbol,
             "trade_date": str(trade_date),
             "investment_debate_state": InvestDebateState(
-                {"history": "", "current_response": "", "count": 0}
+                {
+                    "history": "", 
+                    "current_response": "", 
+                    "count": 0,
+                    "bull_history": "",
+                    "bear_history": "",
+                    "bull_messages": [],
+                    "bear_messages": [],
+                    "judge_decision": ""
+                }
             ),
             "risk_debate_state": RiskDebateState(
                 {
@@ -37,6 +46,13 @@ class Propagator:
                     "current_neutral_response": "",
                     "latest_speaker": "Risky",  # Initialize latest speaker
                     "count": 0,
+                    "risky_history": "",
+                    "safe_history": "",
+                    "neutral_history": "",
+                    "risky_messages": [],
+                    "safe_messages": [],
+                    "neutral_messages": [],
+                    "judge_decision": ""
                 }
             ),
             "market_report": "",

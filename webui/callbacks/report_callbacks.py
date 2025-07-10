@@ -206,65 +206,140 @@ def register_report_callbacks(app):
 
         debate_components = []
         
-        # Add Bull Researcher section if available
-        bull_history = debate_state.get("bull_history", "")
-        if bull_history and bull_history.strip():
-            from webui.components.prompt_modal import create_show_prompt_button
-            
-            bull_section = html.Div([
-                html.Div([
-                    html.Div([
-                        html.Span("🐂 Bull Researcher", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
-                        create_show_prompt_button("bull_report")
-                    ], className="d-flex justify-content-between align-items-center mb-2")
-                ]),
-                dcc.Markdown(
-                    bull_history,
-                    mathjax=True,
-                    highlight_config={"theme": "dark"},
-                    dangerously_allow_html=False,
-                    className='enhanced-markdown-content',
-                    style={
-                        "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
-                        "border-radius": "8px",
-                        "padding": "1rem",
-                        "border-left": "4px solid #10B981",
-                        "color": "#E2E8F0",
-                        "margin-bottom": "1rem"
-                    }
-                )
-            ])
-            debate_components.append(bull_section)
+        # Get message arrays for proper conversation display
+        bull_messages = debate_state.get("bull_messages", [])
+        bear_messages = debate_state.get("bear_messages", [])
         
-        # Add Bear Researcher section if available  
-        bear_history = debate_state.get("bear_history", "")
-        if bear_history and bear_history.strip():
+        # Create conversation-style debate display
+        if bull_messages or bear_messages:
             from webui.components.prompt_modal import create_show_prompt_button
             
-            bear_section = html.Div([
-                html.Div([
+            # Interleave messages chronologically based on debate flow
+            # Usually: Bull -> Bear -> Bull -> Bear, etc.
+            max_messages = max(len(bull_messages), len(bear_messages))
+            
+            for i in range(max_messages):
+                # Add Bull message if available
+                if i < len(bull_messages):
+                    bull_message = bull_messages[i]
+                    # Remove the "Bull Analyst: " prefix for cleaner display
+                    clean_bull_message = bull_message.replace("Bull Analyst: ", "")
+                    
+                    bull_section = html.Div([
+                        html.Div([
+                            html.Div([
+                                html.Span("🐂 Bull Researcher", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
+                                create_show_prompt_button("bull_report")
+                            ], className="d-flex justify-content-between align-items-center mb-2")
+                        ]),
+                        dcc.Markdown(
+                            clean_bull_message,
+                            mathjax=True,
+                            highlight_config={"theme": "dark"},
+                            dangerously_allow_html=False,
+                            className='enhanced-markdown-content',
+                            style={
+                                "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
+                                "border-radius": "8px",
+                                "padding": "1rem",
+                                "border-left": "4px solid #10B981",
+                                "color": "#E2E8F0",
+                                "margin-bottom": "1rem"
+                            }
+                        )
+                    ])
+                    debate_components.append(bull_section)
+                
+                # Add Bear message if available
+                if i < len(bear_messages):
+                    bear_message = bear_messages[i]
+                    # Remove the "Bear Analyst: " prefix for cleaner display
+                    clean_bear_message = bear_message.replace("Bear Analyst: ", "")
+                    
+                    bear_section = html.Div([
+                        html.Div([
+                            html.Div([
+                                html.Span("🐻 Bear Researcher", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
+                                create_show_prompt_button("bear_report")
+                            ], className="d-flex justify-content-between align-items-center mb-2")
+                        ]),
+                        dcc.Markdown(
+                            clean_bear_message,
+                            mathjax=True,
+                            highlight_config={"theme": "dark"},
+                            dangerously_allow_html=False,
+                            className='enhanced-markdown-content',
+                            style={
+                                "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
+                                "border-radius": "8px",
+                                "padding": "1rem",
+                                "border-left": "4px solid #EF4444",
+                                "color": "#E2E8F0",
+                                "margin-bottom": "1rem"
+                            }
+                        )
+                    ])
+                    debate_components.append(bear_section)
+        
+        # Fallback to old format if new message arrays don't exist
+        elif debate_state.get("bull_history") or debate_state.get("bear_history"):
+            from webui.components.prompt_modal import create_show_prompt_button
+            
+            # Add Bull Researcher section if available
+            bull_history = debate_state.get("bull_history", "")
+            if bull_history and bull_history.strip():
+                bull_section = html.Div([
                     html.Div([
-                        html.Span("🐻 Bear Researcher", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
-                        create_show_prompt_button("bear_report")
-                    ], className="d-flex justify-content-between align-items-center mb-2")
-                ]),
-                dcc.Markdown(
-                    bear_history,
-                    mathjax=True,
-                    highlight_config={"theme": "dark"},
-                    dangerously_allow_html=False,
-                    className='enhanced-markdown-content',
-                    style={
-                        "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
-                        "border-radius": "8px",
-                        "padding": "1rem",
-                        "border-left": "4px solid #EF4444",
-                        "color": "#E2E8F0",
-                        "margin-bottom": "1rem"
-                    }
-                )
-            ])
-            debate_components.append(bear_section)
+                        html.Div([
+                            html.Span("🐂 Bull Researcher", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
+                            create_show_prompt_button("bull_report")
+                        ], className="d-flex justify-content-between align-items-center mb-2")
+                    ]),
+                    dcc.Markdown(
+                        bull_history,
+                        mathjax=True,
+                        highlight_config={"theme": "dark"},
+                        dangerously_allow_html=False,
+                        className='enhanced-markdown-content',
+                        style={
+                            "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
+                            "border-radius": "8px",
+                            "padding": "1rem",
+                            "border-left": "4px solid #10B981",
+                            "color": "#E2E8F0",
+                            "margin-bottom": "1rem"
+                        }
+                    )
+                ])
+                debate_components.append(bull_section)
+            
+            # Add Bear Researcher section if available  
+            bear_history = debate_state.get("bear_history", "")
+            if bear_history and bear_history.strip():
+                bear_section = html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Span("🐻 Bear Researcher", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
+                            create_show_prompt_button("bear_report")
+                        ], className="d-flex justify-content-between align-items-center mb-2")
+                    ]),
+                    dcc.Markdown(
+                        bear_history,
+                        mathjax=True,
+                        highlight_config={"theme": "dark"},
+                        dangerously_allow_html=False,
+                        className='enhanced-markdown-content',
+                        style={
+                            "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
+                            "border-radius": "8px",
+                            "padding": "1rem",
+                            "border-left": "4px solid #EF4444",
+                            "color": "#E2E8F0",
+                            "margin-bottom": "1rem"
+                        }
+                    )
+                ])
+                debate_components.append(bear_section)
         
         if not debate_components:
             return create_markdown_content("", "Researcher debate will begin once analysis starts.")
@@ -310,95 +385,200 @@ def register_report_callbacks(app):
 
         debate_components = []
         
-        # Add Risky/Aggressive section if available
-        risky_history = risk_debate_state.get("risky_history", "")
-        if risky_history and risky_history.strip():
-            from webui.components.prompt_modal import create_show_prompt_button
-            
-            risky_section = html.Div([
-                html.Div([
-                    html.Div([
-                        html.Span("⚡ Risky Analyst", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
-                        create_show_prompt_button("aggressive_report")
-                    ], className="d-flex justify-content-between align-items-center mb-2")
-                ]),
-                dcc.Markdown(
-                    risky_history,
-                    mathjax=True,
-                    highlight_config={"theme": "dark"},
-                    dangerously_allow_html=False,
-                    className='enhanced-markdown-content',
-                    style={
-                        "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
-                        "border-radius": "8px",
-                        "padding": "1rem",
-                        "border-left": "4px solid #EF4444",
-                        "color": "#E2E8F0",
-                        "margin-bottom": "1rem"
-                    }
-                )
-            ])
-            debate_components.append(risky_section)
+        # Get message arrays for proper conversation display
+        risky_messages = risk_debate_state.get("risky_messages", [])
+        safe_messages = risk_debate_state.get("safe_messages", [])
+        neutral_messages = risk_debate_state.get("neutral_messages", [])
         
-        # Add Safe/Conservative section if available  
-        safe_history = risk_debate_state.get("safe_history", "")
-        if safe_history and safe_history.strip():
+        # Create conversation-style debate display
+        if risky_messages or safe_messages or neutral_messages:
             from webui.components.prompt_modal import create_show_prompt_button
             
-            safe_section = html.Div([
-                html.Div([
-                    html.Div([
-                        html.Span("🛡️ Safe Analyst", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
-                        create_show_prompt_button("conservative_report")
-                    ], className="d-flex justify-content-between align-items-center mb-2")
-                ]),
-                dcc.Markdown(
-                    safe_history,
-                    mathjax=True,
-                    highlight_config={"theme": "dark"},
-                    dangerously_allow_html=False,
-                    className='enhanced-markdown-content',
-                    style={
-                        "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
-                        "border-radius": "8px",
-                        "padding": "1rem",
-                        "border-left": "4px solid #10B981",
-                        "color": "#E2E8F0",
-                        "margin-bottom": "1rem"
-                    }
-                )
-            ])
-            debate_components.append(safe_section)
+            # Interleave messages chronologically based on debate flow
+            # Usually: Risky -> Safe -> Neutral -> Risky -> Safe -> Neutral, etc.
+            max_messages = max(len(risky_messages), len(safe_messages), len(neutral_messages))
+            
+            for i in range(max_messages):
+                # Add Risky message if available
+                if i < len(risky_messages):
+                    risky_message = risky_messages[i]
+                    # Remove the "Risky Analyst: " prefix for cleaner display
+                    clean_risky_message = risky_message.replace("Risky Analyst: ", "")
+                    
+                    risky_section = html.Div([
+                        html.Div([
+                            html.Div([
+                                html.Span("⚡ Risky Analyst", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
+                                create_show_prompt_button("aggressive_report")
+                            ], className="d-flex justify-content-between align-items-center mb-2")
+                        ]),
+                        dcc.Markdown(
+                            clean_risky_message,
+                            mathjax=True,
+                            highlight_config={"theme": "dark"},
+                            dangerously_allow_html=False,
+                            className='enhanced-markdown-content',
+                            style={
+                                "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
+                                "border-radius": "8px",
+                                "padding": "1rem",
+                                "border-left": "4px solid #EF4444",
+                                "color": "#E2E8F0",
+                                "margin-bottom": "1rem"
+                            }
+                        )
+                    ])
+                    debate_components.append(risky_section)
+                
+                # Add Safe message if available
+                if i < len(safe_messages):
+                    safe_message = safe_messages[i]
+                    # Remove the "Safe Analyst: " prefix for cleaner display
+                    clean_safe_message = safe_message.replace("Safe Analyst: ", "")
+                    
+                    safe_section = html.Div([
+                        html.Div([
+                            html.Div([
+                                html.Span("🛡️ Safe Analyst", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
+                                create_show_prompt_button("conservative_report")
+                            ], className="d-flex justify-content-between align-items-center mb-2")
+                        ]),
+                        dcc.Markdown(
+                            clean_safe_message,
+                            mathjax=True,
+                            highlight_config={"theme": "dark"},
+                            dangerously_allow_html=False,
+                            className='enhanced-markdown-content',
+                            style={
+                                "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
+                                "border-radius": "8px",
+                                "padding": "1rem",
+                                "border-left": "4px solid #10B981",
+                                "color": "#E2E8F0",
+                                "margin-bottom": "1rem"
+                            }
+                        )
+                    ])
+                    debate_components.append(safe_section)
+                
+                # Add Neutral message if available
+                if i < len(neutral_messages):
+                    neutral_message = neutral_messages[i]
+                    # Remove the "Neutral Analyst: " prefix for cleaner display
+                    clean_neutral_message = neutral_message.replace("Neutral Analyst: ", "")
+                    
+                    neutral_section = html.Div([
+                        html.Div([
+                            html.Div([
+                                html.Span("⚖️ Neutral Analyst", className="me-2", style={"fontWeight": "bold", "color": "#3B82F6"}),
+                                create_show_prompt_button("neutral_report")
+                            ], className="d-flex justify-content-between align-items-center mb-2")
+                        ]),
+                        dcc.Markdown(
+                            clean_neutral_message,
+                            mathjax=True,
+                            highlight_config={"theme": "dark"},
+                            dangerously_allow_html=False,
+                            className='enhanced-markdown-content',
+                            style={
+                                "background": "linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%)",
+                                "border-radius": "8px",
+                                "padding": "1rem",
+                                "border-left": "4px solid #3B82F6",
+                                "color": "#E2E8F0",
+                                "margin-bottom": "1rem"
+                            }
+                        )
+                    ])
+                    debate_components.append(neutral_section)
         
-        # Add Neutral section if available
-        neutral_history = risk_debate_state.get("neutral_history", "")
-        if neutral_history and neutral_history.strip():
+        # Fallback to old format if new message arrays don't exist
+        elif risk_debate_state.get("risky_history") or risk_debate_state.get("safe_history") or risk_debate_state.get("neutral_history"):
             from webui.components.prompt_modal import create_show_prompt_button
             
-            neutral_section = html.Div([
-                html.Div([
+            # Add Risky/Aggressive section if available
+            risky_history = risk_debate_state.get("risky_history", "")
+            if risky_history and risky_history.strip():
+                risky_section = html.Div([
                     html.Div([
-                        html.Span("⚖️ Neutral Analyst", className="me-2", style={"fontWeight": "bold", "color": "#3B82F6"}),
-                        create_show_prompt_button("neutral_report")
-                    ], className="d-flex justify-content-between align-items-center mb-2")
-                ]),
-                dcc.Markdown(
-                    neutral_history,
-                    mathjax=True,
-                    highlight_config={"theme": "dark"},
-                    dangerously_allow_html=False,
-                    className='enhanced-markdown-content',
-                    style={
-                        "background": "linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%)",
-                        "border-radius": "8px",
-                        "padding": "1rem",
-                        "border-left": "4px solid #3B82F6",
-                        "color": "#E2E8F0",
-                        "margin-bottom": "1rem"
-                    }
-                )
-            ])
-            debate_components.append(neutral_section)
+                        html.Div([
+                            html.Span("⚡ Risky Analyst", className="me-2", style={"fontWeight": "bold", "color": "#EF4444"}),
+                            create_show_prompt_button("aggressive_report")
+                        ], className="d-flex justify-content-between align-items-center mb-2")
+                    ]),
+                    dcc.Markdown(
+                        risky_history,
+                        mathjax=True,
+                        highlight_config={"theme": "dark"},
+                        dangerously_allow_html=False,
+                        className='enhanced-markdown-content',
+                        style={
+                            "background": "linear-gradient(135deg, #7F1D1D 0%, #B91C1C 100%)",
+                            "border-radius": "8px",
+                            "padding": "1rem",
+                            "border-left": "4px solid #EF4444",
+                            "color": "#E2E8F0",
+                            "margin-bottom": "1rem"
+                        }
+                    )
+                ])
+                debate_components.append(risky_section)
+            
+            # Add Safe/Conservative section if available  
+            safe_history = risk_debate_state.get("safe_history", "")
+            if safe_history and safe_history.strip():
+                safe_section = html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Span("🛡️ Safe Analyst", className="me-2", style={"fontWeight": "bold", "color": "#10B981"}),
+                            create_show_prompt_button("conservative_report")
+                        ], className="d-flex justify-content-between align-items-center mb-2")
+                    ]),
+                    dcc.Markdown(
+                        safe_history,
+                        mathjax=True,
+                        highlight_config={"theme": "dark"},
+                        dangerously_allow_html=False,
+                        className='enhanced-markdown-content',
+                        style={
+                            "background": "linear-gradient(135deg, #064E3B 0%, #047857 100%)",
+                            "border-radius": "8px",
+                            "padding": "1rem",
+                            "border-left": "4px solid #10B981",
+                            "color": "#E2E8F0",
+                            "margin-bottom": "1rem"
+                        }
+                    )
+                ])
+                debate_components.append(safe_section)
+            
+            # Add Neutral section if available
+            neutral_history = risk_debate_state.get("neutral_history", "")
+            if neutral_history and neutral_history.strip():
+                neutral_section = html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Span("⚖️ Neutral Analyst", className="me-2", style={"fontWeight": "bold", "color": "#3B82F6"}),
+                            create_show_prompt_button("neutral_report")
+                        ], className="d-flex justify-content-between align-items-center mb-2")
+                    ]),
+                    dcc.Markdown(
+                        neutral_history,
+                        mathjax=True,
+                        highlight_config={"theme": "dark"},
+                        dangerously_allow_html=False,
+                        className='enhanced-markdown-content',
+                        style={
+                            "background": "linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%)",
+                            "border-radius": "8px",
+                            "padding": "1rem",
+                            "border-left": "4px solid #3B82F6",
+                            "color": "#E2E8F0",
+                            "margin-bottom": "1rem"
+                        }
+                    )
+                ])
+                debate_components.append(neutral_section)
         
         if not debate_components:
             return create_markdown_content("", "Risk debate will begin once analysis starts.")

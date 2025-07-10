@@ -57,6 +57,8 @@ Debate History:
             "history": investment_debate_state.get("history", ""),
             "bear_history": investment_debate_state.get("bear_history", ""),
             "bull_history": investment_debate_state.get("bull_history", ""),
+            "bull_messages": investment_debate_state.get("bull_messages", []),
+            "bear_messages": investment_debate_state.get("bear_messages", []),
             "current_response": response.content,
             "count": investment_debate_state["count"],
         }

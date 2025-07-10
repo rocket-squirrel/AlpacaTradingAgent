@@ -19,7 +19,9 @@ def create_social_media_analyst(llm, toolkit):
         company_name = state["company_of_interest"]
 
         if toolkit.config["online_tools"]:
-            tools = [toolkit.get_stock_news_openai]
+            tools = [
+                toolkit.get_stock_news_openai,
+            ]
         else:
             tools = [
                 toolkit.get_reddit_stock_info,

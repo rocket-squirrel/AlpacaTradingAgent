@@ -108,11 +108,18 @@ Output conversationally as if you are speaking without any special formatting.""
 
         argument = f"Safe Analyst: {response.content}"
 
+        # Store safe messages as a list for proper conversation display
+        safe_messages = risk_debate_state.get("safe_messages", [])
+        safe_messages.append(argument)
+        
         new_risk_debate_state = {
             "history": history + "\n" + argument,
             "risky_history": risk_debate_state.get("risky_history", ""),
+            "risky_messages": risk_debate_state.get("risky_messages", []),
             "safe_history": safe_history + "\n" + argument,
+            "safe_messages": safe_messages,
             "neutral_history": risk_debate_state.get("neutral_history", ""),
+            "neutral_messages": risk_debate_state.get("neutral_messages", []),
             "latest_speaker": "Safe",
             "current_risky_response": risk_debate_state.get(
                 "current_risky_response", ""
